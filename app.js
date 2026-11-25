@@ -54,10 +54,10 @@ function showMessage(id, message, isError = true) {
 
 function getVisibilityLabel(visibility) {
   return ({
-    public: "一般公開",
-    members: "ネームド限定",
+    public: "全体公開",
+    members: "ログインユーザー限定",
     admin: "管理者・動画管理者限定"
-  })[visibility] || "一般公開";
+  })[visibility] || "全体公開";
 }
 
 function getYouTubeId(url) {
@@ -622,7 +622,7 @@ function renderAdminVideoPreview() {
 }
 
 // --------------------------------------------------
-// 管理画面：リスト表示と自動保存
+// 管理画面：Excel風の表形式リスト
 // --------------------------------------------------
 
 function renderAdminVideoList() {
@@ -635,78 +635,153 @@ function renderAdminVideoList() {
     return;
   }
 
-  container.innerHTML = videos.map((video) => {
-    const id = escapeHTML(video.id);
-    const selectedTagIds = videoTagMap[String(video.id)] || [];
+  container.innerHTML = `
+    <div class="video-table-scroll">
+      <table class="video-management-table">
+        <thead>
+          <tr>
+            <th class="video-name-column">動画名</th>
+            <th>カテゴリ</th>
+            <th>公開範囲</th>
+            <th class="description-column">説明文</th>
+            <th class="tags-column">タグ</th>
+            <th>保存状態</th>
+            <th>操作</th>
+          </tr>
+        </thead>
 
-    return `
-      <div class="admin-video-row" data-row-id="${id}">
-        <div class="admin-video-row-title">
-          <strong>${escapeHTML(video.title)}</strong>
-          <span>${escapeHTML(video.category)}</span>
-        </div>
+        <tbody>
+          ${videos.map((video) => {
+            const id = escapeHTML(video.id);
+            const selectedTagIds = videoTagMap[String(video.id)] || [];
 
-        <div class="admin-video-row-fields">
-          <label>
-            カテゴリ
-            <select data-auto-field="category" data-video-id="${id}">
-              ${CATEGORIES.map((category) => `
-                <option value="${escapeHTML(category)}"
-                  ${video.category === category ? "selected" : ""}>
-                  ${escapeHTML(category)}
-                </option>
-              `).join("")}
-            </select>
-          </label>
+            return `
+              <tr data-row-id="${id}">
+                <td class="video-name-column">
+                  <div class="table-video-title">
+                    <strong>${escapeHTML(video.title)}</strong>
+                    <span>${escapeHTML(video.youtube_id)}</span>
+                  </div>
+                </td>
 
-          <label>
-            公開範囲
-            <select data-auto-field="visibility" data-video-id="${id}">
-              <option value="public" ${video.visibility === "public" ? "selected" : ""}>全体公開</option>
-              <option value="members" ${video.visibility === "members" ? "selected" : ""}>ログインユーザー限定</option>
-              <option value="admin" ${video.visibility === "admin" ? "selected" : ""}>管理者・動画管理者限定</option>
-            </select>
-          </label>
-        </div>
+                <td>
+                  <select
+                    class="table-select"
+                    data-auto-field="category"
+                    data-video-id="${id}"
+                    aria-label="${escapeHTML(video.title)}のカテゴリ"
+                  >
+                    ${CATEGORIES.map((category) => `
+                      <option
+                        value="${escapeHTML(category)}"
+                        ${video.category === category ? "selected" : ""}
+                      >${escapeHTML(category)}</option>
+                    `).join("")}
+                  </select>
+                </td>
 
-        <div class="admin-video-row-tags">
-          <span>タグ</span>
-          <div class="tag-checkbox-list">
-            ${tags.map((tag) => `
-              <label class="tag-checkbox">
-                <input
-                  type="checkbox"
-                  data-auto-tag="${escapeHTML(tag.id)}"
-                  data-video-id="${id}"
-                  ${selectedTagIds.some((tagId) => Number(tagId) === Number(tag.id)) ? "checked" : ""}
-                >
-                <span>${escapeHTML(tag.name)}</span>
-              </label>
-            `).join("")}
-          </div>
-        </div>
+                <td>
+                  <select
+                    class="table-select"
+                    data-auto-field="visibility"
+                    data-video-id="${id}"
+                    aria-label="${escapeHTML(video.title)}の公開範囲"
+                  >
+                    <option value="public" ${video.visibility === "public" ? "selected" : ""}>全体公開</option>
+                    <option value="members" ${video.visibility === "members" ? "selected" : ""}>ログインユーザー限定</option>
+                    <option value="admin" ${video.visibility === "admin" ? "selected" : ""}>管理者・動画管理者限定</option>
+                  </select>
+                </td>
 
-        <div class="admin-video-row-footer">
-          <span class="auto-save-status" data-save-status="${id}">変更は自動保存されます</span>
-          <button type="button" class="small-button" data-edit="${id}">詳細編集</button>
-          <button type="button" class="small-button delete" data-delete="${id}">削除</button>
-        </div>
-      </div>
-    `;
-  }).join("");
+                <td class="description-column">
+                  <textarea
+                    class="table-description"
+                    data-auto-field="description"
+                    data-video-id="${id}"
+                    rows="2"
+                    aria-label="${escapeHTML(video.title)}の説明文"
+                    placeholder="説明文を入力"
+                  >${escapeHTML(video.description || "")}</textarea>
+                </td>
+
+                <td class="tags-column">
+                  <div class="table-tag-list">
+                    ${tags.length ? tags.map((tag) => `
+                      <label class="table-tag-option">
+                        <input
+                          type="checkbox"
+                          data-auto-tag="${escapeHTML(tag.id)}"
+                          data-video-id="${id}"
+                          ${selectedTagIds.some((tagId) => Number(tagId) === Number(tag.id)) ? "checked" : ""}
+                        >
+                        <span>${escapeHTML(tag.name)}</span>
+                      </label>
+                    `).join("") : '<span class="muted-text">タグなし</span>'}
+                  </div>
+                </td>
+
+                <td>
+                  <span
+                    class="auto-save-status"
+                    data-save-status="${id}"
+                  >保存済み</span>
+                </td>
+
+                <td class="table-actions">
+                  <button
+                    type="button"
+                    class="small-button"
+                    data-edit="${id}"
+                  >詳細編集</button>
+
+                  <button
+                    type="button"
+                    class="small-button delete"
+                    data-delete="${id}"
+                  >削除</button>
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function setRowSaveStatus(videoId, message, state = "saved") {
+  const status = document.querySelector(
+    `[data-save-status="${CSS.escape(String(videoId))}"]`
+  );
+
+  if (!status) return;
+
+  status.textContent = message;
+  status.dataset.state = state;
 }
 
 async function autoSaveVideoField(videoId, field, value) {
   if (!canManageVideos()) return;
 
-  const status = document.querySelector(
-    `[data-save-status="${CSS.escape(String(videoId))}"]`
-  );
-
-  if (status) {
-    status.textContent = "保存中...";
-    status.style.color = "#a36a13";
+  if (!["category", "visibility", "description"].includes(field)) {
+    return;
   }
+
+  if (
+    field === "visibility" &&
+    !["public", "members", "admin"].includes(value)
+  ) {
+    return;
+  }
+
+  if (
+    field === "category" &&
+    !CATEGORIES.includes(value)
+  ) {
+    return;
+  }
+
+  setRowSaveStatus(videoId, "保存中...", "saving");
 
   const { error } = await supabase
     .from("videos")
@@ -715,11 +790,7 @@ async function autoSaveVideoField(videoId, field, value) {
 
   if (error) {
     console.error("自動保存エラー:", error);
-
-    if (status) {
-      status.textContent = "保存失敗：もう一度変更してください";
-      status.style.color = "#b13d3d";
-    }
+    setRowSaveStatus(videoId, "保存失敗・再変更してください", "error");
     return;
   }
 
@@ -727,12 +798,11 @@ async function autoSaveVideoField(videoId, field, value) {
     (item) => String(item.id) === String(videoId)
   );
 
-  if (video) video[field] = value;
-
-  if (status) {
-    status.textContent = "保存しました";
-    status.style.color = "#287449";
+  if (video) {
+    video[field] = value;
   }
+
+  setRowSaveStatus(videoId, "保存しました", "saved");
 
   renderVideos();
   renderAdminVideoPreview();
@@ -741,31 +811,18 @@ async function autoSaveVideoField(videoId, field, value) {
 async function autoSaveVideoTags(videoId, tagIds) {
   if (!canManageVideos()) return;
 
-  const status = document.querySelector(
-    `[data-save-status="${CSS.escape(String(videoId))}"]`
-  );
-
-  if (status) {
-    status.textContent = "タグ保存中...";
-    status.style.color = "#a36a13";
-  }
+  setRowSaveStatus(videoId, "タグ保存中...", "saving");
 
   const error = await saveVideoTags(videoId, tagIds);
 
   if (error) {
-    if (status) {
-      status.textContent = "タグ保存失敗：もう一度変更してください";
-      status.style.color = "#b13d3d";
-    }
+    setRowSaveStatus(videoId, "タグ保存失敗・再変更してください", "error");
     return;
   }
 
   videoTagMap[String(videoId)] = tagIds;
 
-  if (status) {
-    status.textContent = "保存しました";
-    status.style.color = "#287449";
-  }
+  setRowSaveStatus(videoId, "保存しました", "saved");
 
   renderVideos();
   renderAdminVideoPreview();

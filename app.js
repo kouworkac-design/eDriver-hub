@@ -3,7 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 const $ = (id) => document.getElementById(id);
 
 let videos = [];
@@ -12,13 +11,16 @@ let isAdmin = false;
 let isNamedUser = false;
 let currentUser = null;
 
-const categories = [
-  "新着動画",
-  "KYT",
-  "フォークリフト",
-  "テールゲートリフト",
-  "安全講習"
-];
+function bindEvent(id, eventName, handler) {
+  const element = $(id);
+
+  if (!element) {
+    console.error(`HTML要素が見つかりません: #${id}`);
+    return;
+  }
+
+  element.addEventListener(eventName, handler);
+}
 
 function escapeHTML(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({
@@ -30,6 +32,22 @@ function escapeHTML(value = "") {
   })[char]);
 }
 
+function showMessage(id, message, isError = true) {
+  const element = $(id);
+  if (!element) return;
+
+  element.textContent = message;
+  element.style.color = isError ? "#b13d3d" : "#287449";
+}
+
+function getVisibilityLabel(visibility) {
+  return ({
+    public: "一般公開",
+    members: "ネームド限定",
+    admin: "管理者限定"
+  })[visibility] || "一般公開";
+}
+
 function getYouTubeId(url) {
   try {
     const parsed = new URL(url);
@@ -39,11 +57,11 @@ function getYouTubeId(url) {
       return parsed.pathname.split("/").filter(Boolean)[0] || null;
     }
 
-    if (
-      host === "youtube.com" ||
-      host === "m.youtube.com" ||
-      host === "youtube-nocookie.com"
-    ) {
+    if ([
+      "youtube.com",
+      "m.youtube.com",
+      "youtube-nocookie.com"
+    ].includes(host)) {
       if (parsed.pathname === "/watch") {
         return parsed.searchParams.get("v");
       }
@@ -61,26 +79,7 @@ function getYouTubeId(url) {
   }
 }
 
-function showMessage(elementId, message, isError = true) {
-  const element = $(elementId);
-  if (!element) return;
-
-  element.textContent = message;
-  element.style.color = isError ? "#b13d3d" : "#287449";
-}
-
-function getVisibilityLabel(visibility) {
-  const labels = {
-    public: "一般公開",
-    members: "ネームド限定",
-    admin: "管理者限定"
-  };
-
-  return labels[visibility] || "一般公開";
-}
-
-// ログインIDから内部認証用メールアドレスを生成
-// Edge Function側と同じSHA-256方式
+// ログインIDから内部メールアドレスを生成
 async function makeInternalEmail(username) {
   const bytes = new TextEncoder().encode(username);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -93,19 +92,19 @@ async function makeInternalEmail(username) {
 }
 
 // 動画取得
-// 公開範囲はSupabaseのRLSで制御される
 async function loadVideos() {
+  const grid = $("videoGrid");
+  if (!grid) return;
+
   const { data, error } = await supabase
     .from("videos")
     .select("*")
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("動画の取得に失敗:", error);
-
-    $("videoGrid").innerHTML =
-      '<div class="empty-state">動画を読み込めませんでした。設定を確認してください。</div>';
-
+    console.error("動画取得エラー:", error);
+    grid.innerHTML =
+      '<div class="empty-state">動画を読み込めませんでした。</div>';
     return;
   }
 
@@ -113,14 +112,18 @@ async function loadVideos() {
   renderVideos();
 }
 
-// 動画検索・カテゴリー絞り込み
+// 動画絞り込み
 function getFilteredVideos() {
-  const keyword = $("searchInput").value.trim().toLowerCase();
+  const searchInput = $("searchInput");
+  const keyword = searchInput
+    ? searchInput.value.trim().toLowerCase()
+    : "";
 
-  // 新着動画は最新5件を対象にする
-  let targetVideos = currentCategory === "新着動画"
+  const targetVideos = currentCategory === "新着動画"
     ? videos.slice(0, 5)
-    : videos.filter((video) => video.category === currentCategory);
+    : videos.filter(
+        (video) => video.category === currentCategory
+      );
 
   return targetVideos.filter((video) => {
     const searchable = [
@@ -135,22 +138,31 @@ function getFilteredVideos() {
 
 // 動画一覧表示
 function renderVideos() {
+  const grid = $("videoGrid");
+  if (!grid) return;
+
   const filtered = getFilteredVideos();
 
-  $("currentCategory").textContent = currentCategory;
-  $("videoCount").textContent = `${filtered.length}本`;
+  if ($("currentCategory")) {
+    $("currentCategory").textContent = currentCategory;
+  }
+
+  if ($("videoCount")) {
+    $("videoCount").textContent = `${filtered.length}本`;
+  }
 
   if (filtered.length === 0) {
-    $("videoGrid").innerHTML =
+    grid.innerHTML =
       '<div class="empty-state">該当する動画はありません。</div>';
     return;
   }
 
-  $("videoGrid").innerHTML = filtered.map((video) => {
+  grid.innerHTML = filtered.map((video) => {
     const id = escapeHTML(video.id);
     const title = escapeHTML(video.title);
     const description = escapeHTML(video.description || "");
     const category = escapeHTML(video.category);
+
     const thumbnail =
       `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg`;
 
@@ -189,47 +201,61 @@ function renderVideos() {
   }).join("");
 }
 
-// 管理者・ログイン状態の画面更新
+// 管理者画面更新
 function updateAdminView() {
-  $("adminPanel").classList.toggle("hidden", !isAdmin);
+  if ($("adminPanel")) {
+    $("adminPanel").classList.toggle("hidden", !isAdmin);
+  }
 
-  $("adminLoginBtn").classList.toggle(
-    "hidden",
-    !!currentUser
-  );
+  if ($("adminLoginBtn")) {
+    $("adminLoginBtn").classList.toggle("hidden", !!currentUser);
+  }
 
-  $("adminLogoutBtn").classList.toggle(
-    "hidden",
-    !currentUser
-  );
+  if ($("adminLogoutBtn")) {
+    $("adminLogoutBtn").classList.toggle("hidden", !currentUser);
+  }
 
   renderVideos();
 }
 
 // 動画フォーム初期化
 function resetVideoForm() {
-  $("videoForm").reset();
-  $("editVideoId").value = "";
-  $("videoVisibility").value = "public";
-  $("saveVideoBtn").textContent = "動画を登録";
-  $("cancelEditBtn").classList.add("hidden");
+  if ($("videoForm")) $("videoForm").reset();
+  if ($("editVideoId")) $("editVideoId").value = "";
+  if ($("videoVisibility")) $("videoVisibility").value = "public";
+  if ($("saveVideoBtn")) $("saveVideoBtn").textContent = "動画を登録";
+  if ($("cancelEditBtn")) $("cancelEditBtn").classList.add("hidden");
+
   showMessage("formMessage", "", false);
 }
 
-// 動画プレイヤー
+// 動画再生
 function openPlayer(video) {
-  $("playerTitle").textContent = video.title;
-  $("playerDescription").textContent = video.description || "";
+  const dialog = $("playerDialog");
+  const player = $("youtubePlayer");
 
-  $("youtubePlayer").src =
+  if (!dialog || !player) return;
+
+  if ($("playerTitle")) {
+    $("playerTitle").textContent = video.title;
+  }
+
+  if ($("playerDescription")) {
+    $("playerDescription").textContent = video.description || "";
+  }
+
+  player.src =
     `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.youtube_id)}?autoplay=1`;
 
-  $("playerDialog").showModal();
+  dialog.showModal();
 }
 
 function closePlayer() {
-  $("youtubePlayer").src = "";
-  $("playerDialog").close();
+  if ($("youtubePlayer")) $("youtubePlayer").src = "";
+
+  if ($("playerDialog")?.open) {
+    $("playerDialog").close();
+  }
 }
 
 // 動画登録・編集
@@ -277,31 +303,27 @@ async function handleVideoSubmit(event) {
 
   let result;
 
-  if (editId) {
-    result = await supabase
-      .from("videos")
-      .update(payload)
-      .eq("id", editId);
-  } else {
-    result = await supabase
-      .from("videos")
-      .insert(payload);
+  try {
+    result = editId
+      ? await supabase.from("videos").update(payload).eq("id", editId)
+      : await supabase.from("videos").insert(payload);
+  } catch (error) {
+    console.error(error);
+    showMessage("formMessage", "保存中にエラーが発生しました。");
+    $("saveVideoBtn").disabled = false;
+    return;
   }
 
   $("saveVideoBtn").disabled = false;
 
   if (result.error) {
     console.error(result.error);
-    showMessage(
-      "formMessage",
-      "保存に失敗しました。Supabaseの権限設定を確認してください。"
-    );
+    showMessage("formMessage", "保存に失敗しました。権限設定を確認してください。");
     return;
   }
 
   resetVideoForm();
   showMessage("formMessage", "動画を保存しました。", false);
-
   await loadVideos();
 }
 
@@ -318,7 +340,6 @@ function editVideo(id) {
   $("editVideoId").value = video.id;
   $("videoUrl").value =
     `https://www.youtube.com/watch?v=${video.youtube_id}`;
-
   $("videoTitle").value = video.title;
   $("videoDescription").value = video.description || "";
   $("videoCategory").value = video.category;
@@ -326,7 +347,6 @@ function editVideo(id) {
 
   $("saveVideoBtn").textContent = "変更を保存";
   $("cancelEditBtn").classList.remove("hidden");
-
   $("adminPanel").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -339,7 +359,6 @@ async function deleteVideo(id) {
   );
 
   if (!video) return;
-
   if (!confirm(`「${video.title}」を削除しますか？`)) return;
 
   const { error } = await supabase
@@ -348,8 +367,8 @@ async function deleteVideo(id) {
     .eq("id", id);
 
   if (error) {
-    alert("削除できませんでした。管理者権限を確認してください。");
     console.error(error);
+    alert("削除できませんでした。管理者権限を確認してください。");
     return;
   }
 
@@ -359,7 +378,6 @@ async function deleteVideo(id) {
 // 管理者ログイン
 async function adminLogin(event) {
   event.preventDefault();
-
   showMessage("loginMessage", "");
 
   const email = $("loginEmail").value.trim();
@@ -372,7 +390,6 @@ async function adminLogin(event) {
 
   if (error) {
     console.error("管理者ログインエラー:", error);
-
     showMessage(
       "loginMessage",
       "ログインできませんでした。メールアドレスとパスワードを確認してください。"
@@ -387,7 +404,6 @@ async function adminLogin(event) {
 // ネームドユーザーログイン
 async function memberLogin(event) {
   event.preventDefault();
-
   showMessage("memberLoginMessage", "");
 
   const username = $("memberUsername").value.trim();
@@ -408,7 +424,6 @@ async function memberLogin(event) {
 
     if (error) {
       console.error("ユーザーログインエラー:", error);
-
       showMessage(
         "memberLoginMessage",
         "ログインできませんでした。IDとパスワードを確認してください。"
@@ -421,7 +436,6 @@ async function memberLogin(event) {
 
   } catch (error) {
     console.error(error);
-
     showMessage(
       "memberLoginMessage",
       "ログイン処理に失敗しました。もう一度お試しください。"
@@ -434,8 +448,8 @@ async function logout() {
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    alert("ログアウトできませんでした。");
     console.error(error);
+    alert("ログアウトできませんでした。");
     return;
   }
 
@@ -449,7 +463,6 @@ async function checkUserRole(user) {
   isNamedUser = false;
 
   if (user) {
-    // 管理者判定
     const { data: adminData, error: adminError } = await supabase
       .from("video_admins")
       .select("user_id")
@@ -462,7 +475,6 @@ async function checkUserRole(user) {
 
     isAdmin = !!adminData;
 
-    // ネームドユーザー判定
     if (!isAdmin) {
       const { data: namedData, error: namedError } =
         await supabase.rpc("is_named_user");
@@ -476,14 +488,11 @@ async function checkUserRole(user) {
   }
 
   updateAdminView();
-
-  // ログイン状態が変わったら閲覧可能な動画を再取得
   await loadVideos();
 
-  // 管理者の場合はユーザー一覧も取得
   if (isAdmin) {
     await loadNamedUsers();
-  } else {
+  } else if ($("namedUserList")) {
     $("namedUserList").innerHTML = "";
   }
 }
@@ -501,26 +510,17 @@ async function createNamedUser(event) {
   const password = $("namedPassword").value;
 
   if (!username || username.length > 64) {
-    showMessage(
-      "namedUserMessage",
-      "ログインIDは1〜64文字で入力してください。"
-    );
+    showMessage("namedUserMessage", "ログインIDは1〜64文字で入力してください。");
     return;
   }
 
   if (/[\u0000-\u001f\u007f]/.test(username)) {
-    showMessage(
-      "namedUserMessage",
-      "ログインIDに使用できない文字が含まれています。"
-    );
+    showMessage("namedUserMessage", "ログインIDに使用できない文字が含まれています。");
     return;
   }
 
   if (password.length < 8 || password.length > 72) {
-    showMessage(
-      "namedUserMessage",
-      "パスワードは8〜72文字で設定してください。"
-    );
+    showMessage("namedUserMessage", "パスワードは8〜72文字で設定してください。");
     return;
   }
 
@@ -531,12 +531,7 @@ async function createNamedUser(event) {
   try {
     const { data, error } = await supabase.functions.invoke(
       "create-named-user",
-      {
-        body: {
-          username,
-          password
-        }
-      }
+      { body: { username, password } }
     );
 
     if (error) {
@@ -560,7 +555,6 @@ async function createNamedUser(event) {
 
   } catch (error) {
     console.error(error);
-
     showMessage(
       "namedUserMessage",
       error.message || "ユーザー発行に失敗しました。"
@@ -577,6 +571,7 @@ async function loadNamedUsers() {
   if (!isAdmin) return;
 
   const list = $("namedUserList");
+  if (!list) return;
 
   const { data, error } = await supabase
     .from("named_users")
@@ -585,7 +580,6 @@ async function loadNamedUsers() {
 
   if (error) {
     console.error("ユーザー一覧取得エラー:", error);
-
     list.innerHTML =
       '<p class="empty-state">ユーザー一覧を取得できませんでした。</p>';
     return;
@@ -597,22 +591,16 @@ async function loadNamedUsers() {
     return;
   }
 
-  list.innerHTML = data.map((user) => {
-    const status = user.is_active
-      ? "利用中"
-      : "利用停止中";
-
-    return `
-      <div class="named-user-item">
-        <span class="named-user-name">
-          ${escapeHTML(user.username)}
-        </span>
-        <span class="named-user-status ${user.is_active ? "" : "inactive"}">
-          ${status}
-        </span>
-      </div>
-    `;
-  }).join("");
+  list.innerHTML = data.map((user) => `
+    <div class="named-user-item">
+      <span class="named-user-name">
+        ${escapeHTML(user.username)}
+      </span>
+      <span class="named-user-status ${user.is_active ? "" : "inactive"}">
+        ${user.is_active ? "利用中" : "利用停止中"}
+      </span>
+    </div>
+  `).join("");
 }
 
 // リアルタイム更新
@@ -633,7 +621,7 @@ function setupRealtime() {
 
 // イベント設定
 function setupEvents() {
-  $("categoryNav").addEventListener("click", (event) => {
+  bindEvent("categoryNav", "click", (event) => {
     const button = event.target.closest("[data-category]");
     if (!button) return;
 
@@ -646,13 +634,11 @@ function setupEvents() {
     renderVideos();
   });
 
-  $("searchInput").addEventListener("input", renderVideos);
+  bindEvent("searchInput", "input", renderVideos);
+  bindEvent("videoForm", "submit", handleVideoSubmit);
+  bindEvent("cancelEditBtn", "click", resetVideoForm);
 
-  $("videoForm").addEventListener("submit", handleVideoSubmit);
-
-  $("cancelEditBtn").addEventListener("click", resetVideoForm);
-
-  $("videoGrid").addEventListener("click", (event) => {
+  bindEvent("videoGrid", "click", (event) => {
     const playButton = event.target.closest("[data-play]");
     const editButton = event.target.closest("[data-edit]");
     const deleteButton = event.target.closest("[data-delete]");
@@ -661,7 +647,6 @@ function setupEvents() {
       const video = videos.find(
         (item) => String(item.id) === playButton.dataset.play
       );
-
       if (video) openPlayer(video);
     }
 
@@ -669,7 +654,7 @@ function setupEvents() {
     if (deleteButton) deleteVideo(deleteButton.dataset.delete);
   });
 
-  $("videoGrid").addEventListener("keydown", (event) => {
+  bindEvent("videoGrid", "keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
 
     const target = event.target.closest("[data-play]");
@@ -684,29 +669,24 @@ function setupEvents() {
     if (video) openPlayer(video);
   });
 
-  $("adminLoginBtn").addEventListener("click", () => {
+  bindEvent("adminLoginBtn", "click", () => {
     showMessage("loginMessage", "", false);
     showMessage("memberLoginMessage", "", false);
-    $("loginDialog").showModal();
+
+    if ($("loginDialog")) $("loginDialog").showModal();
   });
 
-  $("closeLoginBtn").addEventListener("click", () => {
-    $("loginDialog").close();
+  bindEvent("closeLoginBtn", "click", () => {
+    if ($("loginDialog")?.open) $("loginDialog").close();
   });
 
-  $("adminLoginForm").addEventListener("submit", adminLogin);
-  $("memberLoginForm").addEventListener("submit", memberLogin);
+  bindEvent("adminLoginForm", "submit", adminLogin);
+  bindEvent("memberLoginForm", "submit", memberLogin);
+  bindEvent("adminLogoutBtn", "click", logout);
+  bindEvent("createNamedUserForm", "submit", createNamedUser);
+  bindEvent("closePlayerBtn", "click", closePlayer);
 
-  $("adminLogoutBtn").addEventListener("click", logout);
-
-  $("createNamedUserForm").addEventListener(
-    "submit",
-    createNamedUser
-  );
-
-  $("closePlayerBtn").addEventListener("click", closePlayer);
-
-  $("playerDialog").addEventListener("click", (event) => {
+  bindEvent("playerDialog", "click", (event) => {
     if (event.target === $("playerDialog")) closePlayer();
   });
 }

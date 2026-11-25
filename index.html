@@ -20,7 +20,7 @@
 
     <div class="header-actions">
       <button id="adminLoginBtn" class="button button-outline">
-        管理者ログイン
+        ログイン
       </button>
       <button id="adminLogoutBtn" class="button button-outline hidden">
         ログアウト
@@ -40,31 +40,39 @@
       <div class="hero-icon">▶</div>
     </section>
 
+    <!-- 管理者専用パネル -->
     <section id="adminPanel" class="admin-panel hidden">
       <div class="section-heading">
         <div>
           <p class="eyebrow">ADMINISTRATION</p>
-          <h2>動画管理</h2>
+          <h2>管理者ページ</h2>
         </div>
         <span class="admin-status">管理者モード</span>
       </div>
+
+      <!-- 動画登録 -->
+      <h3 class="admin-subheading">動画管理</h3>
 
       <form id="videoForm" class="video-form">
         <input type="hidden" id="editVideoId">
 
         <label>
           YouTube URL
-          <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." required>
+          <input id="videoUrl" type="url"
+            placeholder="https://www.youtube.com/watch?v=..."
+            required>
         </label>
 
         <label>
           動画タイトル
-          <input id="videoTitle" type="text" placeholder="動画タイトルを入力" required>
+          <input id="videoTitle" type="text"
+            placeholder="動画タイトルを入力" required>
         </label>
 
         <label>
           説明
-          <textarea id="videoDescription" rows="3" placeholder="動画の説明を入力"></textarea>
+          <textarea id="videoDescription" rows="3"
+            placeholder="動画の説明を入力"></textarea>
         </label>
 
         <label>
@@ -77,18 +85,74 @@
           </select>
         </label>
 
+        <label>
+          公開範囲
+          <select id="videoVisibility" required>
+            <option value="public">一般公開（ログイン不要）</option>
+            <option value="members">ネームドユーザー限定</option>
+            <option value="admin">管理者限定</option>
+          </select>
+        </label>
+
         <div class="form-actions">
-          <button type="submit" id="saveVideoBtn" class="button button-primary">
+          <button type="submit" id="saveVideoBtn"
+            class="button button-primary">
             動画を登録
           </button>
-          <button type="button" id="cancelEditBtn" class="button button-outline hidden">
+          <button type="button" id="cancelEditBtn"
+            class="button button-outline hidden">
             編集をキャンセル
           </button>
         </div>
-        <p id="formMessage" class="form-message" aria-live="polite"></p>
+
+        <p id="formMessage" class="form-message"
+          aria-live="polite"></p>
       </form>
+
+      <div class="admin-divider"></div>
+
+      <!-- ネームドユーザー管理 -->
+      <h3 class="admin-subheading">ネームドユーザー管理</h3>
+      <p class="admin-description">
+        メールアドレスを使わず、ログインIDとパスワードを発行します。
+      </p>
+
+      <form id="createNamedUserForm" class="user-form">
+        <label>
+          ログインID
+          <input id="namedUsername" type="text"
+            placeholder="例：Tanaka"
+            maxlength="64" required>
+        </label>
+
+        <label>
+          パスワード
+          <input id="namedPassword" type="password"
+            placeholder="8文字以上"
+            minlength="8" maxlength="72"
+            autocomplete="new-password" required>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" id="createNamedUserBtn"
+            class="button button-primary">
+            ユーザーを発行
+          </button>
+        </div>
+
+        <p id="namedUserMessage" class="form-message"
+          aria-live="polite"></p>
+      </form>
+
+      <div class="named-user-list-section">
+        <h4>発行済みユーザー</h4>
+        <div id="namedUserList" class="named-user-list">
+          <p class="empty-state">ユーザー情報を読み込んでいます...</p>
+        </div>
+      </div>
     </section>
 
+    <!-- 動画一覧 -->
     <section class="library-section">
       <div class="library-heading">
         <div>
@@ -97,16 +161,23 @@
         </div>
         <div class="search-box">
           <span>⌕</span>
-          <input id="searchInput" type="search" placeholder="動画を検索">
+          <input id="searchInput" type="search"
+            placeholder="動画を検索">
         </div>
       </div>
 
-      <nav id="categoryNav" class="category-nav" aria-label="動画カテゴリー">
-        <button class="category-button active" data-category="新着動画">新着動画</button>
-        <button class="category-button" data-category="KYT">KYT</button>
-        <button class="category-button" data-category="フォークリフト">フォークリフト</button>
-        <button class="category-button" data-category="テールゲートリフト">テールゲートリフト</button>
-        <button class="category-button" data-category="安全講習">安全講習</button>
+      <nav id="categoryNav" class="category-nav"
+        aria-label="動画カテゴリー">
+        <button class="category-button active"
+          data-category="新着動画">新着動画</button>
+        <button class="category-button"
+          data-category="KYT">KYT</button>
+        <button class="category-button"
+          data-category="フォークリフト">フォークリフト</button>
+        <button class="category-button"
+          data-category="テールゲートリフト">テールゲートリフト</button>
+        <button class="category-button"
+          data-category="安全講習">安全講習</button>
       </nav>
 
       <div class="results-heading">
@@ -125,32 +196,75 @@
     <span>安全教育・KYT動画共有サイト</span>
   </footer>
 
+  <!-- ログイン画面 -->
   <dialog id="loginDialog" class="dialog">
-    <form id="loginForm" class="login-form">
-      <button type="button" id="closeLoginBtn" class="dialog-close" aria-label="閉じる">×</button>
-      <p class="eyebrow">ADMIN LOGIN</p>
-      <h2>管理者ログイン</h2>
+    <div class="login-form">
+      <button type="button" id="closeLoginBtn"
+        class="dialog-close" aria-label="閉じる">×</button>
 
-      <label>
-        メールアドレス
-        <input id="loginEmail" type="email" autocomplete="username" required>
-      </label>
+      <p class="eyebrow">ACCOUNT LOGIN</p>
+      <h2>ログイン</h2>
 
-      <label>
-        パスワード
-        <input id="loginPassword" type="password" autocomplete="current-password" required>
-      </label>
+      <!-- 管理者ログイン -->
+      <form id="adminLoginForm" class="login-section">
+        <h3>管理者ログイン</h3>
 
-      <button type="submit" class="button button-primary button-full">
-        ログイン
-      </button>
-      <p id="loginMessage" class="form-message" aria-live="polite"></p>
-    </form>
+        <label>
+          メールアドレス
+          <input id="loginEmail" type="email"
+            autocomplete="username" required>
+        </label>
+
+        <label>
+          パスワード
+          <input id="loginPassword" type="password"
+            autocomplete="current-password" required>
+        </label>
+
+        <button type="submit"
+          class="button button-primary button-full">
+          管理者としてログイン
+        </button>
+
+        <p id="loginMessage" class="form-message"
+          aria-live="polite"></p>
+      </form>
+
+      <div class="admin-divider"></div>
+
+      <!-- ネームドユーザーログイン -->
+      <form id="memberLoginForm" class="login-section">
+        <h3>ユーザーログイン</h3>
+
+        <label>
+          ログインID
+          <input id="memberUsername" type="text"
+            autocomplete="username" required>
+        </label>
+
+        <label>
+          パスワード
+          <input id="memberPassword" type="password"
+            autocomplete="current-password" required>
+        </label>
+
+        <button type="submit"
+          class="button button-primary button-full">
+          ユーザーとしてログイン
+        </button>
+
+        <p id="memberLoginMessage" class="form-message"
+          aria-live="polite"></p>
+      </form>
+    </div>
   </dialog>
 
+  <!-- 動画再生画面 -->
   <dialog id="playerDialog" class="dialog player-dialog">
     <div class="player-content">
-      <button type="button" id="closePlayerBtn" class="dialog-close" aria-label="閉じる">×</button>
+      <button type="button" id="closePlayerBtn"
+        class="dialog-close" aria-label="閉じる">×</button>
+
       <div class="player-frame">
         <iframe id="youtubePlayer"
           title="YouTube動画プレイヤー"
@@ -160,6 +274,7 @@
           allowfullscreen>
         </iframe>
       </div>
+
       <h2 id="playerTitle"></h2>
       <p id="playerDescription"></p>
     </div>

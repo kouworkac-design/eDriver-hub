@@ -1,0 +1,170 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="安全教育・KYT動画共有サイト">
+  <title>Safety Video Library</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="./">
+      <span class="brand-mark">S</span>
+      <span>
+        <strong>SAFETY VIDEO</strong>
+        <small>VIDEO LIBRARY</small>
+      </span>
+    </a>
+
+    <div class="header-actions">
+      <button id="adminLoginBtn" class="button button-outline">
+        管理者ログイン
+      </button>
+      <button id="adminLogoutBtn" class="button button-outline hidden">
+        ログアウト
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">SAFETY EDUCATION LIBRARY</p>
+        <h1>安全教育動画ライブラリ</h1>
+        <p class="hero-description">
+          安全教育・危険予知トレーニングの動画をまとめて閲覧できます。
+        </p>
+      </div>
+      <div class="hero-icon">▶</div>
+    </section>
+
+    <section id="adminPanel" class="admin-panel hidden">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">ADMINISTRATION</p>
+          <h2>動画管理</h2>
+        </div>
+        <span class="admin-status">管理者モード</span>
+      </div>
+
+      <form id="videoForm" class="video-form">
+        <input type="hidden" id="editVideoId">
+
+        <label>
+          YouTube URL
+          <input id="videoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." required>
+        </label>
+
+        <label>
+          動画タイトル
+          <input id="videoTitle" type="text" placeholder="動画タイトルを入力" required>
+        </label>
+
+        <label>
+          説明
+          <textarea id="videoDescription" rows="3" placeholder="動画の説明を入力"></textarea>
+        </label>
+
+        <label>
+          カテゴリー
+          <select id="videoCategory" required>
+            <option value="KYT">KYT</option>
+            <option value="フォークリフト">フォークリフト</option>
+            <option value="テールゲートリフト">テールゲートリフト</option>
+            <option value="安全講習">安全講習</option>
+          </select>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" id="saveVideoBtn" class="button button-primary">
+            動画を登録
+          </button>
+          <button type="button" id="cancelEditBtn" class="button button-outline hidden">
+            編集をキャンセル
+          </button>
+        </div>
+        <p id="formMessage" class="form-message" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="library-section">
+      <div class="library-heading">
+        <div>
+          <p class="eyebrow">VIDEO COLLECTION</p>
+          <h2>動画一覧</h2>
+        </div>
+        <div class="search-box">
+          <span>⌕</span>
+          <input id="searchInput" type="search" placeholder="動画を検索">
+        </div>
+      </div>
+
+      <nav id="categoryNav" class="category-nav" aria-label="動画カテゴリー">
+        <button class="category-button active" data-category="新着動画">新着動画</button>
+        <button class="category-button" data-category="KYT">KYT</button>
+        <button class="category-button" data-category="フォークリフト">フォークリフト</button>
+        <button class="category-button" data-category="テールゲートリフト">テールゲートリフト</button>
+        <button class="category-button" data-category="安全講習">安全講習</button>
+      </nav>
+
+      <div class="results-heading">
+        <h3 id="currentCategory">新着動画</h3>
+        <span id="videoCount">0本</span>
+      </div>
+
+      <div id="videoGrid" class="video-grid">
+        <div class="empty-state">動画を読み込んでいます...</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>SAFETY VIDEO LIBRARY</span>
+    <span>安全教育・KYT動画共有サイト</span>
+  </footer>
+
+  <dialog id="loginDialog" class="dialog">
+    <form id="loginForm" class="login-form">
+      <button type="button" id="closeLoginBtn" class="dialog-close" aria-label="閉じる">×</button>
+      <p class="eyebrow">ADMIN LOGIN</p>
+      <h2>管理者ログイン</h2>
+
+      <label>
+        メールアドレス
+        <input id="loginEmail" type="email" autocomplete="username" required>
+      </label>
+
+      <label>
+        パスワード
+        <input id="loginPassword" type="password" autocomplete="current-password" required>
+      </label>
+
+      <button type="submit" class="button button-primary button-full">
+        ログイン
+      </button>
+      <p id="loginMessage" class="form-message" aria-live="polite"></p>
+    </form>
+  </dialog>
+
+  <dialog id="playerDialog" class="dialog player-dialog">
+    <div class="player-content">
+      <button type="button" id="closePlayerBtn" class="dialog-close" aria-label="閉じる">×</button>
+      <div class="player-frame">
+        <iframe id="youtubePlayer"
+          title="YouTube動画プレイヤー"
+          src=""
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allowfullscreen>
+        </iframe>
+      </div>
+      <h2 id="playerTitle"></h2>
+      <p id="playerDescription"></p>
+    </div>
+  </dialog>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

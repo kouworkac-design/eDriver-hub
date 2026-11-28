@@ -242,14 +242,15 @@
       <section id="scormDemoManagement" class="management-section hidden">
         <h3>SCORM体験版のファイル</h3>
         <p class="muted-text">
-          体験版の本体（scorm-demo.html）と、2人作業の動画（ja.mp4 / en.mp4 / pt.mp4）を登録します。
+          教材の画面から書き出した「体験版セット（scorm_demo_upload_set.zip）」をそのまま選べば、中の4ファイルをまとめて登録します。
+          個別に登録する場合は、体験版の本体（scorm-demo.html）と、2人作業の動画（ja.mp4 / en.mp4 / pt.mp4）を選んでください。
           ファイルは非公開の保存場所に置かれ、閲覧を許可したユーザーと管理者だけが開けます。
           同じ名前のファイルを選ぶと上書きされます。
         </p>
         <form id="scormDemoUploadForm" class="user-form">
           <div class="form-group">
             <label for="scormDemoFiles">ファイルを選択（複数可）</label>
-            <input type="file" id="scormDemoFiles" accept=".html,video/mp4" multiple required>
+            <input type="file" id="scormDemoFiles" accept=".zip,.html,video/mp4" multiple required>
           </div>
           <button type="submit" id="scormDemoUploadBtn" class="button button-primary">アップロード</button>
         </form>

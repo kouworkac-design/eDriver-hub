@@ -28,6 +28,22 @@
       </div>
     </section>
 
+    <!-- SCORM体験版（管理者が許可したユーザーにだけ表示） -->
+    <section id="scormDemoSection" class="scorm-demo-section hidden" aria-labelledby="scormDemoTitle">
+      <div class="scorm-demo-card">
+        <div class="scorm-demo-text">
+          <p class="section-eyebrow">SCORM DEMO</p>
+          <h2 id="scormDemoTitle">現場の安全研修（体験版）</h2>
+          <p class="muted-text">
+            安全研修・現場で使う日本語（3Dの部品図）・KYTの3コースを体験できます。
+            日本語・英語・ポルトガル語に対応しています。
+          </p>
+        </div>
+        <button type="button" id="openScormDemoBtn" class="button button-primary">体験版をひらく</button>
+      </div>
+      <p id="scormDemoMessage" class="form-message" aria-live="polite"></p>
+    </section>
+
     <!-- 管理画面 -->
     <section id="adminPanel" class="admin-panel hidden">
       <div class="section-heading">
@@ -183,7 +199,7 @@
       <section id="namedUserManagement" class="management-section hidden">
         <h3>ユーザー管理</h3>
         <p class="muted-text">
-          ユーザーの作成と動画管理権限の付与・解除ができます。
+          ユーザーの作成と、動画管理権限・SCORM体験版の閲覧許可の付与・解除ができます。
         </p>
 
         <form id="createNamedUserForm" class="user-form">
@@ -220,6 +236,25 @@
         <div id="namedUserList" class="named-user-list">
           <p class="muted-text">ユーザーを読み込み中...</p>
         </div>
+      </section>
+
+      <!-- 管理者専用：SCORM体験版のファイル -->
+      <section id="scormDemoManagement" class="management-section hidden">
+        <h3>SCORM体験版のファイル</h3>
+        <p class="muted-text">
+          体験版の本体（scorm-demo.html）と、2人作業の動画（ja.mp4 / en.mp4 / pt.mp4）を登録します。
+          ファイルは非公開の保存場所に置かれ、閲覧を許可したユーザーと管理者だけが開けます。
+          同じ名前のファイルを選ぶと上書きされます。
+        </p>
+        <form id="scormDemoUploadForm" class="user-form">
+          <div class="form-group">
+            <label for="scormDemoFiles">ファイルを選択（複数可）</label>
+            <input type="file" id="scormDemoFiles" accept=".html,video/mp4" multiple required>
+          </div>
+          <button type="submit" id="scormDemoUploadBtn" class="button button-primary">アップロード</button>
+        </form>
+        <p id="scormDemoUploadMessage" class="form-message" aria-live="polite"></p>
+        <div id="scormDemoFileList" class="scorm-demo-files"></div>
       </section>
     </section>
 
@@ -303,6 +338,14 @@
   </dialog>
 
   <!-- 動画再生画面 -->
+  <dialog id="scormDemoDialog" class="dialog scorm-demo-dialog" aria-label="SCORM体験版">
+    <div class="scorm-demo-bar">
+      <span>現場の安全研修（体験版）</span>
+      <button type="button" id="closeScormDemoBtn" class="dialog-close" aria-label="閉じる">×</button>
+    </div>
+    <iframe id="scormDemoFrame" title="SCORM体験版" allow="fullscreen; autoplay"></iframe>
+  </dialog>
+
   <dialog id="playerDialog" class="dialog player-dialog">
     <div class="dialog-content">
       <div class="dialog-header">

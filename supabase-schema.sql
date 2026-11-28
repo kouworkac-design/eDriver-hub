@@ -108,3 +108,44 @@ begin
   end if;
 end
 $$;
+
+-- --------------------------------------------------
+-- SCORM体験版：ユーザーごとの閲覧許可（2026-11-28 追加・適用済み）
+-- --------------------------------------------------
+alter table public.named_users
+  add column if not exists scorm_demo_enabled boolean not null default false;
+
+create or replace function public.can_view_scorm_demo()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select public.is_video_admin() or exists (
+    select 1 from public.named_users
+    where user_id = (select auth.uid())
+      and is_active
+      and scorm_demo_enabled
+  );
+$$;
+revoke all on function public.can_view_scorm_demo() from public, anon;
+grant execute on function public.can_view_scorm_demo() to authenticated;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('scorm-demo', 'scorm-demo', false, 52428800, array['text/html', 'video/mp4'])
+on conflict (id) do nothing;
+
+create policy "SCORM demo: permitted users can read"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'scorm-demo' and (select public.can_view_scorm_demo()));
+create policy "SCORM demo: admins can upload"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'scorm-demo' and (select public.is_video_admin()));
+create policy "SCORM demo: admins can update"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'scorm-demo' and (select public.is_video_admin()))
+  with check (bucket_id = 'scorm-demo' and (select public.is_video_admin()));
+create policy "SCORM demo: admins can delete"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'scorm-demo' and (select public.is_video_admin()));

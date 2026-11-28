@@ -13,7 +13,14 @@ let currentCategory = "新着動画";
 let isAdmin = false;
 let isNamedUser = false;
 let isVideoManager = false;
+let canViewScormDemo = false;
 let currentUser = null;
+
+// SCORM体験版：非公開ストレージの場所とファイル名
+const DEMO_BUCKET = "scorm-demo";
+const DEMO_HTML = "scorm-demo.html";
+const DEMO_VIDEOS = ["ja", "en", "pt"];
+let scormDemoBlobUrl = null;
 
 let realtimeChannel = null;
 let isLoading = false;
@@ -1052,6 +1059,7 @@ async function checkUserRole(user) {
   isAdmin = false;
   isNamedUser = false;
   isVideoManager = false;
+  canViewScormDemo = false;
 
   if (user) {
     const { data: adminData, error: adminError } = await supabase
@@ -1083,15 +1091,26 @@ async function checkUserRole(user) {
     }
 
     isVideoManager = managerData === true;
+
+    const { data: demoData, error: demoError } =
+      await supabase.rpc("can_view_scorm_demo");
+
+    if (demoError) {
+      console.error("体験版の権限確認エラー:", demoError);
+    }
+
+    canViewScormDemo = demoData === true;
   }
 
   updateAdminView();
+  updateScormDemoView();
 
   await loadTags();
   await loadVideos();
 
   if (isAdmin) {
     await loadNamedUsers();
+    await loadScormDemoFiles();
   } else if ($("namedUserList")) {
     $("namedUserList").innerHTML = "";
   }
@@ -1179,7 +1198,7 @@ async function loadNamedUsers() {
 
   const { data, error } = await supabase
     .from("named_users")
-    .select("username, is_active, created_at, video_management_enabled")
+    .select("username, is_active, created_at, video_management_enabled, scorm_demo_enabled")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1206,15 +1225,27 @@ async function loadNamedUsers() {
         </span>
       </div>
 
-      <label class="permission-toggle">
-        <input
-          type="checkbox"
-          data-manager-user="${escapeHTML(user.username)}"
-          ${user.video_management_enabled ? "checked" : ""}
-          ${!user.is_active ? "disabled" : ""}
-        >
-        <span>動画管理権限</span>
-      </label>
+      <div class="permission-toggles">
+        <label class="permission-toggle">
+          <input
+            type="checkbox"
+            data-manager-user="${escapeHTML(user.username)}"
+            ${user.video_management_enabled ? "checked" : ""}
+            ${!user.is_active ? "disabled" : ""}
+          >
+          <span>動画管理権限</span>
+        </label>
+
+        <label class="permission-toggle">
+          <input
+            type="checkbox"
+            data-demo-user="${escapeHTML(user.username)}"
+            ${user.scorm_demo_enabled ? "checked" : ""}
+            ${!user.is_active ? "disabled" : ""}
+          >
+          <span>SCORM体験版</span>
+        </label>
+      </div>
     </div>
   `).join("");
 }
@@ -1239,6 +1270,194 @@ async function changeUserPermission(username, enabled) {
     `${username} の動画管理権限を${enabled ? "付与" : "解除"}しました。`,
     false
   );
+}
+
+async function changeScormDemoPermission(username, enabled) {
+  if (!isAdmin) return;
+
+  const { error } = await supabase
+    .from("named_users")
+    .update({ scorm_demo_enabled: enabled })
+    .eq("username", username);
+
+  if (error) {
+    console.error("体験版の許可変更エラー:", error);
+    alert("SCORM体験版の閲覧許可を変更できませんでした。");
+    await loadNamedUsers();
+    return;
+  }
+
+  showMessage(
+    "namedUserMessage",
+    `${username} のSCORM体験版の閲覧を${enabled ? "許可" : "停止"}しました。`,
+    false
+  );
+}
+
+// --------------------------------------------------
+// SCORM体験版
+// --------------------------------------------------
+
+function updateScormDemoView() {
+  $("scormDemoSection")?.classList.toggle("hidden", !canViewScormDemo);
+  $("scormDemoManagement")?.classList.toggle("hidden", !isAdmin);
+
+  if (!canViewScormDemo && $("scormDemoDialog")?.open) {
+    closeScormDemo();
+  }
+}
+
+async function openScormDemo() {
+  if (!canViewScormDemo) return;
+
+  const button = $("openScormDemoBtn");
+  button.disabled = true;
+  button.textContent = "読み込み中...";
+  showMessage("scormDemoMessage", "", false);
+
+  try {
+    const { data: file, error } = await supabase.storage
+      .from(DEMO_BUCKET)
+      .download(DEMO_HTML);
+
+    if (error || !file) {
+      throw new Error("体験版を読み込めませんでした。管理者がファイルを登録しているか確認してください。");
+    }
+
+    let html = await file.text();
+
+    // 動画は署名付きURL（1時間有効）で渡す
+    const videoUrls = {};
+    const { data: signed } = await supabase.storage
+      .from(DEMO_BUCKET)
+      .createSignedUrls(DEMO_VIDEOS.map((lang) => `videos/${lang}.mp4`), 3600);
+
+    (signed || []).forEach((item, index) => {
+      if (item?.signedUrl) videoUrls[DEMO_VIDEOS[index]] = item.signedUrl;
+    });
+
+    const inject =
+      `<script>window.__DEMO_VIDEOS=${JSON.stringify(videoUrls).replace(/</g, "\\u003c")};<\/script>`;
+    html = html.replace(/<head>/i, `<head>${inject}`);
+
+    if (scormDemoBlobUrl) URL.revokeObjectURL(scormDemoBlobUrl);
+    scormDemoBlobUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+
+    $("scormDemoFrame").src = scormDemoBlobUrl;
+    $("scormDemoDialog").showModal();
+
+  } catch (error) {
+    console.error(error);
+    showMessage("scormDemoMessage", error.message || "体験版を開けませんでした。");
+
+  } finally {
+    button.disabled = false;
+    button.textContent = "体験版をひらく";
+  }
+}
+
+function closeScormDemo() {
+  const dialog = $("scormDemoDialog");
+  if (dialog?.open) dialog.close();
+
+  if ($("scormDemoFrame")) $("scormDemoFrame").src = "about:blank";
+
+  if (scormDemoBlobUrl) {
+    URL.revokeObjectURL(scormDemoBlobUrl);
+    scormDemoBlobUrl = null;
+  }
+}
+
+function demoPathFor(fileName) {
+  const name = fileName.toLowerCase();
+  if (name.endsWith(".html")) return DEMO_HTML;
+
+  const match = /^(ja|en|pt)\.mp4$/.exec(name);
+  return match ? `videos/${match[1]}.mp4` : null;
+}
+
+async function loadScormDemoFiles() {
+  if (!isAdmin) return;
+
+  const list = $("scormDemoFileList");
+  if (!list) return;
+
+  const rows = [];
+  const [{ data: rootFiles }, { data: videoFiles }] = await Promise.all([
+    supabase.storage.from(DEMO_BUCKET).list(""),
+    supabase.storage.from(DEMO_BUCKET).list("videos")
+  ]);
+
+  const found = {};
+  (rootFiles || []).forEach((f) => { if (f.id) found[f.name] = f; });
+  (videoFiles || []).forEach((f) => { found[`videos/${f.name}`] = f; });
+
+  [DEMO_HTML, ...DEMO_VIDEOS.map((lang) => `videos/${lang}.mp4`)].forEach((path) => {
+    const f = found[path];
+    const size = f?.metadata?.size ? `${(f.metadata.size / 1048576).toFixed(1)} MB` : "";
+    const date = f?.updated_at ? new Date(f.updated_at).toLocaleString("ja-JP") : "";
+
+    rows.push(`
+      <div class="scorm-demo-file ${f ? "" : "missing"}">
+        <span class="scorm-demo-file-name">${escapeHTML(path)}</span>
+        <span class="scorm-demo-file-meta">
+          ${f ? `登録済み ${escapeHTML(size)} ${escapeHTML(date)}` : "未登録"}
+        </span>
+      </div>
+    `);
+  });
+
+  list.innerHTML = rows.join("");
+}
+
+async function uploadScormDemoFiles(event) {
+  event.preventDefault();
+  if (!isAdmin) return;
+
+  const files = Array.from($("scormDemoFiles").files || []);
+  if (!files.length) return;
+
+  const unknown = files.filter((f) => !demoPathFor(f.name));
+  if (unknown.length) {
+    showMessage(
+      "scormDemoUploadMessage",
+      `登録できないファイル名です：${unknown.map((f) => f.name).join("、")}（scorm-demo.html / ja.mp4 / en.mp4 / pt.mp4）`
+    );
+    return;
+  }
+
+  const button = $("scormDemoUploadBtn");
+  button.disabled = true;
+
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      button.textContent = `アップロード中... ${i + 1}/${files.length}`;
+
+      const { error } = await supabase.storage
+        .from(DEMO_BUCKET)
+        .upload(demoPathFor(file.name), file, {
+          upsert: true,
+          contentType: file.name.toLowerCase().endsWith(".html") ? "text/html" : "video/mp4"
+        });
+
+      if (error) {
+        console.error("体験版アップロードエラー:", error);
+        throw new Error(`「${file.name}」をアップロードできませんでした。`);
+      }
+    }
+
+    $("scormDemoUploadForm").reset();
+    showMessage("scormDemoUploadMessage", `${files.length}件のファイルを登録しました。`, false);
+
+  } catch (error) {
+    showMessage("scormDemoUploadMessage", error.message || "アップロードに失敗しました。");
+
+  } finally {
+    button.disabled = false;
+    button.textContent = "アップロード";
+    await loadScormDemoFiles();
+  }
 }
 
 // --------------------------------------------------
@@ -1389,7 +1608,21 @@ function setupEvents() {
   bindEvent("createNamedUserForm", "submit", createNamedUser);
   bindEvent("closePlayerBtn", "click", closePlayer);
 
+  bindEvent("openScormDemoBtn", "click", openScormDemo);
+  bindEvent("closeScormDemoBtn", "click", closeScormDemo);
+  bindEvent("scormDemoDialog", "close", closeScormDemo);
+  bindEvent("scormDemoUploadForm", "submit", uploadScormDemoFiles);
+
   bindEvent("namedUserList", "change", (event) => {
+    const demoCheckbox = event.target.closest("[data-demo-user]");
+    if (demoCheckbox) {
+      changeScormDemoPermission(
+        demoCheckbox.dataset.demoUser,
+        demoCheckbox.checked
+      );
+      return;
+    }
+
     const checkbox = event.target.closest("[data-manager-user]");
     if (!checkbox) return;
 

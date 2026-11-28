@@ -335,7 +335,7 @@ function resetVideoForm() {
   if ($("saveVideoBtn")) $("saveVideoBtn").textContent = "動画を登録";
   if ($("cancelEditBtn")) $("cancelEditBtn").classList.add("hidden");
 
-  renderTagCheckboxes();
+  renderTagCheckboxes([]);
   showMessage("formMessage", "", false);
 }
 
@@ -343,11 +343,12 @@ function renderTagCheckboxes(selectedIds = null) {
   const container = $("videoTagCheckboxes");
   if (!container) return;
 
-  const selected = selectedIds || [];
+  // 指定がなければ、いま選んでいるタグをそのまま残す（タグの追加・更新で選択が消えないように）
+  const selected = selectedIds || getSelectedFormTagIds();
 
   if (!tags.length) {
     container.innerHTML =
-      '<span class="muted-text">登録されているタグはありません。</span>';
+      '<span class="muted-text">まだタグはありません。下の欄から作成できます。</span>';
     return;
   }
 
@@ -362,6 +363,66 @@ function renderTagCheckboxes(selectedIds = null) {
       <span>${escapeHTML(tag.name)}</span>
     </label>
   `).join("");
+}
+
+// 動画の登録画面で、新しいタグを作ってそのまま選択する
+async function createTagInline() {
+  if (!canManageVideos()) return;
+
+  const input = $("inlineTagName");
+  const name = input.value.trim();
+
+  if (!name) {
+    showMessage("inlineTagMessage", "タグ名を入力してください。");
+    return;
+  }
+
+  if (name.length > 40) {
+    showMessage("inlineTagMessage", "タグ名は40文字以内にしてください。");
+    return;
+  }
+
+  const selected = getSelectedFormTagIds();
+  const existing = tags.find((tag) => tag.name === name);
+
+  if (existing) {
+    renderTagCheckboxes([...selected, existing.id]);
+    input.value = "";
+    showMessage("inlineTagMessage", `「${name}」は登録済みのタグなので、選択しました。`, false);
+    return;
+  }
+
+  const button = $("inlineTagAddBtn");
+  button.disabled = true;
+
+  try {
+    const { data, error } = await supabase
+      .from("video_tags_master")
+      .insert({ name })
+      .select("id, name")
+      .single();
+
+    if (error) {
+      console.error("タグ作成エラー:", error);
+      showMessage(
+        "inlineTagMessage",
+        error.code === "23505" ? "同じ名前のタグがすでにあります。" : "タグを作成できませんでした。"
+      );
+      return;
+    }
+
+    if (!tags.some((tag) => Number(tag.id) === Number(data.id))) {
+      tags = [...tags, data].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    }
+
+    renderTagCheckboxes([...selected, data.id]);
+    renderTagManagementList();
+    input.value = "";
+    showMessage("inlineTagMessage", `タグ「${name}」を作成して選択しました。`, false);
+
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function getSelectedFormTagIds() {
@@ -972,69 +1033,43 @@ async function deleteTag(id) {
 // ログイン
 // --------------------------------------------------
 
-async function adminLogin(event) {
+// 管理者（メールアドレス）も発行ユーザー（ユーザーID）も同じ入力欄でログインする
+async function login(event) {
   event.preventDefault();
   showMessage("loginMessage", "");
 
-  const email = $("loginEmail").value.trim();
+  const loginId = $("loginId").value.trim();
   const password = $("loginPassword").value;
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  if (error) {
-    console.error("管理者ログインエラー:", error);
-    showMessage(
-      "loginMessage",
-      "ログインできませんでした。メールアドレスとパスワードを確認してください。"
-    );
-    return;
-  }
-
-  $("loginDialog").close();
-  $("adminLoginForm").reset();
-}
-
-async function memberLogin(event) {
-  event.preventDefault();
-  showMessage("memberLoginMessage", "");
-
-  const username = $("memberUsername").value.trim();
-  const password = $("memberPassword").value;
-
-  if (!username) {
-    showMessage("memberLoginMessage", "ログインIDを入力してください。");
+  if (!loginId) {
+    showMessage("loginMessage", "ログインIDを入力してください。");
     return;
   }
 
   try {
-    const internalEmail = await makeInternalEmail(username);
+    const internalEmail = await makeInternalEmail(loginId);
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginId);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: internalEmail,
-      password
-    });
+    // メールアドレスの形なら管理者として先に試し、だめならユーザーIDとして試す
+    const candidates = looksLikeEmail ? [loginId, internalEmail] : [internalEmail];
 
-    if (error) {
-      console.error("ユーザーログインエラー:", error);
-      showMessage(
-        "memberLoginMessage",
-        "ログインできませんでした。IDとパスワードを確認してください。"
-      );
-      return;
+    let lastError = null;
+    for (const email of candidates) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error) {
+        $("loginDialog").close();
+        $("loginForm").reset();
+        return;
+      }
+      lastError = error;
     }
 
-    $("loginDialog").close();
-    $("memberLoginForm").reset();
+    console.error("ログインエラー:", lastError);
+    showMessage("loginMessage", "ログインできませんでした。ログインIDとパスワードを確認してください。");
 
   } catch (error) {
     console.error(error);
-    showMessage(
-      "memberLoginMessage",
-      "ログイン処理に失敗しました。もう一度お試しください。"
-    );
+    showMessage("loginMessage", "ログイン処理に失敗しました。もう一度お試しください。");
   }
 }
 
@@ -1667,17 +1702,25 @@ function setupEvents() {
 
   bindEvent("adminLoginBtn", "click", () => {
     showMessage("loginMessage", "", false);
-    showMessage("memberLoginMessage", "", false);
 
-    if ($("loginDialog")) $("loginDialog").showModal();
+    if ($("loginDialog")) {
+      $("loginDialog").showModal();
+      $("loginId")?.focus();
+    }
   });
 
   bindEvent("closeLoginBtn", "click", () => {
     if ($("loginDialog")?.open) $("loginDialog").close();
   });
 
-  bindEvent("adminLoginForm", "submit", adminLogin);
-  bindEvent("memberLoginForm", "submit", memberLogin);
+  bindEvent("loginForm", "submit", login);
+  bindEvent("inlineTagAddBtn", "click", createTagInline);
+  bindEvent("inlineTagName", "keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      createTagInline();
+    }
+  });
   bindEvent("adminLogoutBtn", "click", logout);
   bindEvent("createNamedUserForm", "submit", createNamedUser);
   bindEvent("closePlayerBtn", "click", closePlayer);

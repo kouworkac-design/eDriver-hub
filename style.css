@@ -1201,3 +1201,20 @@ textarea {
     justify-content: flex-start;
   }
 }
+
+/* 動画登録画面：その場でタグを作成 */
+.inline-tag-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.inline-tag-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-tag-add .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

@@ -1301,3 +1301,84 @@ textarea {
     max-height: 440px;
   }
 }
+
+/* 管理画面のタブ */
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 18px;
+  padding-bottom: 0;
+  border-bottom: 1px solid #dfe7ef;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-tab {
+  flex-shrink: 0;
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #5b6b7b;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.admin-tab:hover {
+  color: var(--blue);
+  background: var(--blue-light);
+}
+
+.admin-tab.active {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+  background: var(--blue-light);
+}
+
+.admin-tab:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+
+.management-section.tab-inactive {
+  display: none;
+}
+
+/* タブ直下の項目は区切り線を付けない */
+.admin-panel > .management-section {
+  margin-top: 0;
+  padding-top: 22px;
+  border-top: 0;
+}
+
+/* スマホ：全部のタブが見えるように折り返す */
+@media (max-width: 640px) {
+  .admin-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 10px;
+  }
+
+  .admin-tab {
+    margin-bottom: 0;
+    padding: 8px 12px;
+    border: 1px solid #dfe7ef;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+
+  .admin-tab.active {
+    border-color: var(--blue);
+    background: var(--blue);
+    color: white;
+  }
+}

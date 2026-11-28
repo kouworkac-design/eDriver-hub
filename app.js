@@ -98,6 +98,160 @@ function getYouTubeId(url) {
   }
 }
 
+// --------------------------------------------------
+// 動画サービスの判定（YouTube / Vimeo）
+// 入力されたURLは検証して ID とハッシュだけを取り出し、
+// 埋め込み先のURLは必ずこちらで組み立てる（入力をそのまま iframe に入れない）
+// --------------------------------------------------
+
+const VIMEO_HOSTS = ["vimeo.com", "player.vimeo.com"];
+const VIMEO_ID_RE = /^[0-9]{1,15}$/;
+const VIMEO_HASH_RE = /^[A-Za-z0-9]{1,64}$/;
+
+// Vimeo公式の埋め込みコードが貼られた場合は、iframe の src だけを取り出す
+function extractEmbedSrc(input) {
+  const text = String(input || "").trim();
+  if (!/^<iframe[\s>]/i.test(text) && !/^<div[\s>]/i.test(text)) return text;
+
+  const match = text.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+  return match ? match[1].replace(/&amp;/g, "&") : "";
+}
+
+function getVimeoInfo(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    if (!VIMEO_HOSTS.includes(host)) return null;
+
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    let id = null;
+    let hash = parsed.searchParams.get("h");
+
+    if (host === "player.vimeo.com") {
+      // https://player.vimeo.com/video/{id}?h={hash}
+      if (parts[0] === "video" && VIMEO_ID_RE.test(parts[1] || "")) id = parts[1];
+    } else {
+      // 対応する形：/{id}、/{id}/{hash}、/channels/xxx/{id}、/groups/xxx/videos/{id}、/showcase/xxx/video/{id}
+      const videoIndex = parts.findIndex((part) => part === "video" || part === "videos");
+
+      if (videoIndex >= 0) {
+        id = VIMEO_ID_RE.test(parts[videoIndex + 1] || "") ? parts[videoIndex + 1] : null;
+      } else if (parts[0] === "channels") {
+        id = VIMEO_ID_RE.test(parts[2] || "") ? parts[2] : null;
+      } else if (VIMEO_ID_RE.test(parts[0] || "")) {
+        id = parts[0];
+        const next = parts[1];
+        if (!hash && next && VIMEO_HASH_RE.test(next) && !VIMEO_ID_RE.test(next)) hash = next;
+      }
+    }
+
+    if (!id) return null;
+    if (hash && !VIMEO_HASH_RE.test(hash)) return null;
+
+    return { vimeoId: id, vimeoHash: hash || null };
+  } catch {
+    return null;
+  }
+}
+
+// 入力（URL または Vimeo の埋め込みコード）を判定して、保存用の値にする
+function parseVideoInput(input) {
+  const url = extractEmbedSrc(input);
+  if (!url) return null;
+
+  const youtubeId = getYouTubeId(url);
+  if (youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)) {
+    return { video_provider: "youtube", youtube_id: youtubeId, vimeo_id: null, vimeo_hash: null };
+  }
+
+  const vimeo = getVimeoInfo(url);
+  if (vimeo) {
+    return { video_provider: "vimeo", youtube_id: null, vimeo_id: vimeo.vimeoId, vimeo_hash: vimeo.vimeoHash };
+  }
+
+  return null;
+}
+
+function isVimeo(video) {
+  return video?.video_provider === "vimeo";
+}
+
+// 再生用の埋め込みURL（許可したドメインだけ・検証済みの値だけで組み立てる）
+function getEmbedUrl(video) {
+  if (isVimeo(video)) {
+    if (!VIMEO_ID_RE.test(video.vimeo_id || "")) return "";
+    const params = new URLSearchParams({ autoplay: "1", autopause: "0", dnt: "1" });
+    if (video.vimeo_hash && VIMEO_HASH_RE.test(video.vimeo_hash)) params.set("h", video.vimeo_hash);
+    return `https://player.vimeo.com/video/${video.vimeo_id}?${params.toString()}`;
+  }
+
+  if (!/^[A-Za-z0-9_-]{11}$/.test(video?.youtube_id || "")) return "";
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.youtube_id)}?autoplay=1`;
+}
+
+// 管理画面の編集欄に戻すためのURL
+function getWatchUrl(video) {
+  if (isVimeo(video)) {
+    return `https://vimeo.com/${video.vimeo_id}${video.vimeo_hash ? `/${video.vimeo_hash}` : ""}`;
+  }
+  return `https://www.youtube.com/watch?v=${video.youtube_id}`;
+}
+
+function getVideoLabel(video) {
+  return isVimeo(video) ? `Vimeo ${video.vimeo_id}` : `YouTube ${video.youtube_id || ""}`;
+}
+
+// サムネイル：YouTubeは画像URL、Vimeoは公式のoEmbedから取得（取得できなければ仮の画像）
+const PLACEHOLDER_THUMB =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270"><rect width="480" height="270" fill="#1c3550"/><circle cx="240" cy="135" r="38" fill="#ffffff22"/><path d="M228 115v40l34-20z" fill="#fff"/></svg>');
+const vimeoThumbCache = new Map();
+
+function getThumbnailUrl(video) {
+  if (isVimeo(video)) return vimeoThumbCache.get(video.vimeo_id) || PLACEHOLDER_THUMB;
+  return `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg`;
+}
+
+async function hydrateVimeoThumbnails(root = document) {
+  const images = root.querySelectorAll("img[data-vimeo-thumb]");
+
+  for (const img of images) {
+    const id = img.dataset.vimeoThumb;
+    const hash = img.dataset.vimeoHash || "";
+    if (!VIMEO_ID_RE.test(id)) continue;
+
+    if (vimeoThumbCache.has(id)) {
+      img.src = vimeoThumbCache.get(id);
+      continue;
+    }
+
+    try {
+      const target = `https://vimeo.com/${id}${hash && VIMEO_HASH_RE.test(hash) ? `/${hash}` : ""}`;
+      const response = await fetch(`https://vimeo.com/api/oembed.json?width=640&url=${encodeURIComponent(target)}`);
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      const thumb = new URL(data.thumbnail_url);
+
+      // Vimeo の画像配信ドメイン以外は使わない
+      if (thumb.protocol === "https:" && /(^|\.)vimeocdn\.com$/.test(thumb.hostname)) {
+        vimeoThumbCache.set(id, thumb.href);
+        document.querySelectorAll(`img[data-vimeo-thumb="${id}"]`).forEach((el) => { el.src = thumb.href; });
+      }
+    } catch {
+      // 取得できない場合は仮の画像のまま
+    }
+  }
+}
+
+function thumbnailAttrs(video) {
+  return isVimeo(video)
+    ? ` data-vimeo-thumb="${escapeHTML(video.vimeo_id)}" data-vimeo-hash="${escapeHTML(video.vimeo_hash || "")}"`
+    : "";
+}
+
 async function makeInternalEmail(username) {
   const bytes = new TextEncoder().encode(username);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -246,8 +400,7 @@ function renderVideos() {
     const description = escapeHTML(video.description || "");
     const category = escapeHTML(video.category);
 
-    const thumbnail =
-      `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg`;
+    const thumbnail = getThumbnailUrl(video);
 
     const videoTags = (videoTagMap[String(video.id)] || [])
       .map((tagId) => tags.find((tag) => Number(tag.id) === Number(tagId)))
@@ -260,7 +413,7 @@ function renderVideos() {
              tabindex="0"
              data-play="${id}"
              aria-label="${title}を再生">
-          <img src="${thumbnail}" alt="${title}" loading="lazy">
+          <img src="${escapeHTML(thumbnail)}" alt="${title}" loading="lazy"${thumbnailAttrs(video)}>
           <span class="play-button">▶</span>
         </div>
 
@@ -292,6 +445,8 @@ function renderVideos() {
       </article>
     `;
   }).join("");
+
+  hydrateVimeoThumbnails(grid);
 }
 
 // --------------------------------------------------
@@ -449,8 +604,14 @@ function openPlayer(video) {
     $("playerDescription").textContent = video.description || "";
   }
 
-  player.src =
-    `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.youtube_id)}?autoplay=1`;
+  const embedUrl = getEmbedUrl(video);
+  if (!embedUrl) {
+    alert("この動画は再生できません。登録内容を確認してください。");
+    return;
+  }
+
+  player.title = isVimeo(video) ? "Vimeo動画プレーヤー" : "YouTube動画プレーヤー";
+  player.src = embedUrl;
 
   dialog.showModal();
 }
@@ -600,8 +761,7 @@ function editVideo(id) {
   if (!video) return;
 
   $("editVideoId").value = video.id;
-  $("videoUrl").value =
-    `https://www.youtube.com/watch?v=${video.youtube_id}`;
+  $("videoUrl").value = getWatchUrl(video);
   $("videoTitle").value = video.title;
   $("videoDescription").value = video.description || "";
   $("videoCategory").value = video.category;
@@ -659,8 +819,7 @@ function renderAdminVideoPreview() {
       ${videos.map((video) => {
         const id = escapeHTML(video.id);
         const title = escapeHTML(video.title);
-        const thumbnail =
-          `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg`;
+        const thumbnail = getThumbnailUrl(video);
 
         return `
           <article class="video-card">
@@ -668,7 +827,7 @@ function renderAdminVideoPreview() {
                  role="button"
                  tabindex="0"
                  data-admin-play="${id}">
-              <img src="${thumbnail}" alt="${title}" loading="lazy">
+              <img src="${escapeHTML(thumbnail)}" alt="${title}" loading="lazy"${thumbnailAttrs(video)}>
               <span class="play-button">▶</span>
             </div>
             <div class="video-info">
@@ -687,6 +846,8 @@ function renderAdminVideoPreview() {
       }).join("")}
     </div>
   `;
+
+  hydrateVimeoThumbnails(container);
 }
 
 // --------------------------------------------------
@@ -728,7 +889,7 @@ function renderAdminVideoList() {
                 <td class="video-name-column">
                   <div class="table-video-title">
                     <strong>${escapeHTML(video.title)}</strong>
-                    <span>${escapeHTML(video.youtube_id)}</span>
+                    <span>${escapeHTML(getVideoLabel(video))}</span>
                   </div>
                 </td>
 

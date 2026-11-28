@@ -174,3 +174,25 @@ alter table public.videos add constraint videos_provider_check check (
     and (vimeo_hash is null or vimeo_hash ~ '^[A-Za-z0-9]{1,64}$')
   )
 );
+
+-- --------------------------------------------------
+-- サムネイル差し込み（任意）（2026-11-28 追加・適用済み）
+-- --------------------------------------------------
+alter table public.videos add column if not exists thumbnail_path text;
+alter table public.videos add constraint videos_thumbnail_path_check
+  check (thumbnail_path is null or thumbnail_path ~ '^[A-Za-z0-9_-]{1,80}\.(jpg|png|webp)$');
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('video-thumbnails', 'video-thumbnails', true, 2097152, array['image/jpeg','image/png','image/webp'])
+on conflict (id) do nothing;
+
+create policy "Video thumbnails: managers can upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'video-thumbnails' and ((select public.is_video_admin()) or (select public.is_video_manager())));
+create policy "Video thumbnails: managers can update" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'video-thumbnails' and ((select public.is_video_admin()) or (select public.is_video_manager())))
+  with check (bucket_id = 'video-thumbnails' and ((select public.is_video_admin()) or (select public.is_video_manager())));
+create policy "Video thumbnails: managers can delete" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'video-thumbnails' and ((select public.is_video_admin()) or (select public.is_video_manager())));

@@ -209,7 +209,20 @@ const PLACEHOLDER_THUMB =
   encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270"><rect width="480" height="270" fill="#1c3550"/><circle cx="240" cy="135" r="38" fill="#ffffff22"/><path d="M228 115v40l34-20z" fill="#fff"/></svg>');
 const vimeoThumbCache = new Map();
 
+const THUMB_BUCKET = "video-thumbnails";
+const THUMB_PATH_RE = /^[A-Za-z0-9_-]{1,80}\.(jpg|png|webp)$/;
+const THUMB_TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const THUMB_MAX_BYTES = 2 * 1024 * 1024;
+let thumbFormState = { file: null, remove: false, objectUrl: null };
+
+function getCustomThumbUrl(video) {
+  if (!video?.thumbnail_path || !THUMB_PATH_RE.test(video.thumbnail_path)) return "";
+  return supabase.storage.from(THUMB_BUCKET).getPublicUrl(video.thumbnail_path).data.publicUrl;
+}
+
 function getThumbnailUrl(video) {
+  const custom = getCustomThumbUrl(video);
+  if (custom) return custom;
   if (isVimeo(video)) return vimeoThumbCache.get(video.vimeo_id) || PLACEHOLDER_THUMB;
   return `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg`;
 }
@@ -247,7 +260,7 @@ async function hydrateVimeoThumbnails(root = document) {
 }
 
 function thumbnailAttrs(video) {
-  return isVimeo(video)
+  return isVimeo(video) && !getCustomThumbUrl(video)
     ? ` data-vimeo-thumb="${escapeHTML(video.vimeo_id)}" data-vimeo-hash="${escapeHTML(video.vimeo_hash || "")}"`
     : "";
 }
@@ -491,7 +504,75 @@ function resetVideoForm() {
   if ($("cancelEditBtn")) $("cancelEditBtn").classList.add("hidden");
 
   renderTagCheckboxes([]);
+  setThumbForm(null);
   showMessage("formMessage", "", false);
+}
+
+// --------------------------------------------------
+// サムネイル差し込み（任意）
+// --------------------------------------------------
+
+function setThumbForm(url) {
+  if (thumbFormState.objectUrl) URL.revokeObjectURL(thumbFormState.objectUrl);
+  thumbFormState = { file: null, remove: false, objectUrl: null };
+  if ($("videoThumbnail")) $("videoThumbnail").value = "";
+  showThumbPreview(url);
+}
+
+function showThumbPreview(url) {
+  const img = $("videoThumbPreview");
+  if (!img) return;
+  img.classList.toggle("hidden", !url);
+  if (url) img.src = url; else img.removeAttribute("src");
+  $("videoThumbRemoveBtn")?.classList.toggle("hidden", !url);
+}
+
+function handleThumbChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!THUMB_TYPES[file.type]) {
+    showMessage("formMessage", "サムネイルはJPG・PNG・WebPの画像を選んでください。");
+    event.target.value = "";
+    return;
+  }
+  if (file.size > THUMB_MAX_BYTES) {
+    showMessage("formMessage", "サムネイル画像は2MB以下にしてください。");
+    event.target.value = "";
+    return;
+  }
+
+  if (thumbFormState.objectUrl) URL.revokeObjectURL(thumbFormState.objectUrl);
+  const objectUrl = URL.createObjectURL(file);
+  thumbFormState = { file, remove: false, objectUrl };
+  showThumbPreview(objectUrl);
+  showMessage("formMessage", "", false);
+}
+
+function handleThumbRemove() {
+  if (thumbFormState.objectUrl) URL.revokeObjectURL(thumbFormState.objectUrl);
+  thumbFormState = { file: null, remove: true, objectUrl: null };
+  if ($("videoThumbnail")) $("videoThumbnail").value = "";
+  showThumbPreview(null);
+}
+
+async function uploadThumbnail(file) {
+  const ext = THUMB_TYPES[file.type];
+  if (!ext || file.size > THUMB_MAX_BYTES) throw new Error("invalid thumbnail");
+
+  const path = `${crypto.randomUUID().replace(/-/g, "")}.${ext}`;
+  const { error } = await supabase.storage
+    .from(THUMB_BUCKET)
+    .upload(path, file, { contentType: file.type, cacheControl: "31536000", upsert: false });
+
+  if (error) throw error;
+  return path;
+}
+
+async function removeThumbnailFile(path) {
+  if (!THUMB_PATH_RE.test(path || "")) return;
+  const { error } = await supabase.storage.from(THUMB_BUCKET).remove([path]);
+  if (error) console.warn("サムネイル削除エラー:", error);
 }
 
 function renderTagCheckboxes(selectedIds = null) {
@@ -667,10 +748,10 @@ async function handleVideoSubmit(event) {
   }
 
   const url = $("videoUrl").value.trim();
-  const youtubeId = getYouTubeId(url);
+  const parsed = parseVideoInput(url);
 
-  if (!youtubeId) {
-    showMessage("formMessage", "有効なYouTube URLを入力してください。");
+  if (!parsed) {
+    showMessage("formMessage", "YouTubeまたはVimeoの動画URL（またはVimeoの埋め込みコード）を入力してください。");
     return;
   }
 
@@ -694,13 +775,33 @@ async function handleVideoSubmit(event) {
   const button = $("saveVideoBtn");
   button.disabled = true;
 
+  const editingVideo = editId
+    ? videos.find((item) => String(item.id) === String(editId))
+    : null;
+  const oldThumbPath = editingVideo?.thumbnail_path || null;
+  let newThumbPath = null;
+
+  if (thumbFormState.file) {
+    try {
+      newThumbPath = await uploadThumbnail(thumbFormState.file);
+    } catch (error) {
+      console.error("サムネイル保存エラー:", error);
+      showMessage("formMessage", "サムネイル画像を保存できませんでした。画像の形式とサイズを確認してください。");
+      button.disabled = false;
+      return;
+    }
+  }
+
   const payload = {
-    youtube_id: youtubeId,
+    ...parsed,
     title,
     description,
     category,
     visibility
   };
+
+  if (newThumbPath) payload.thumbnail_path = newThumbPath;
+  else if (thumbFormState.remove) payload.thumbnail_path = null;
 
   try {
     let videoId = editId;
@@ -724,6 +825,11 @@ async function handleVideoSubmit(event) {
       videoId = data.id;
     }
 
+    // 差し替え・取り外しで使われなくなった画像を片付ける
+    if (oldThumbPath && (newThumbPath || thumbFormState.remove)) {
+      removeThumbnailFile(oldThumbPath);
+    }
+
     const tagError = await saveVideoTags(videoId, selectedTagIds);
 
     if (tagError) {
@@ -741,6 +847,7 @@ async function handleVideoSubmit(event) {
     await loadVideos();
 
   } catch (error) {
+    if (newThumbPath) removeThumbnailFile(newThumbPath);
     console.error("動画保存エラー:", error);
     showMessage(
       "formMessage",
@@ -768,6 +875,7 @@ function editVideo(id) {
   $("videoVisibility").value = video.visibility || "public";
 
   renderTagCheckboxes(videoTagMap[String(video.id)] || []);
+  setThumbForm(getCustomThumbUrl(video) || null);
 
   $("saveVideoBtn").textContent = "変更を保存";
   $("cancelEditBtn").classList.remove("hidden");
@@ -795,12 +903,41 @@ async function deleteVideo(id) {
     return;
   }
 
+  if (video.thumbnail_path) removeThumbnailFile(video.thumbnail_path);
   await loadVideos();
 }
 
 // --------------------------------------------------
 // 管理画面：プレビュー表示
 // --------------------------------------------------
+
+// 管理画面の検索（タイトル・カテゴリ・タグ・説明・公開範囲・動画ID）
+let adminVideoQuery = "";
+
+function getAdminFilteredVideos() {
+  const words = adminVideoQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return videos;
+
+  return videos.filter((video) => {
+    const tagNames = (videoTagMap[String(video.id)] || [])
+      .map((tagId) => tags.find((tag) => String(tag.id) === String(tagId))?.name || "");
+    const haystack = [
+      video.title, video.category, video.description,
+      getVisibilityLabel(video.visibility), getVideoLabel(video), ...tagNames
+    ].join(" ").toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  });
+}
+
+function updateAdminVideoCount(shown) {
+  const el = $("adminVideoCount");
+  if (!el) return;
+  el.textContent = adminVideoQuery.trim()
+    ? `${shown}件 / 全${videos.length}件`
+    : `全${videos.length}件`;
+}
+
+const NO_MATCH_HTML = '<p class="muted-text">検索条件に合う動画はありません。</p>';
 
 function renderAdminVideoPreview() {
   const container = $("adminVideoPreview");
@@ -814,9 +951,17 @@ function renderAdminVideoPreview() {
     return;
   }
 
+  const list = getAdminFilteredVideos();
+  updateAdminVideoCount(list.length);
+
+  if (!list.length) {
+    container.innerHTML = NO_MATCH_HTML;
+    return;
+  }
+
   container.innerHTML = `
     <div class="video-grid">
-      ${videos.map((video) => {
+      ${list.map((video) => {
         const id = escapeHTML(video.id);
         const title = escapeHTML(video.title);
         const thumbnail = getThumbnailUrl(video);
@@ -864,6 +1009,14 @@ function renderAdminVideoList() {
     return;
   }
 
+  const list = getAdminFilteredVideos();
+  updateAdminVideoCount(list.length);
+
+  if (!list.length) {
+    container.innerHTML = NO_MATCH_HTML;
+    return;
+  }
+
   container.innerHTML = `
     <div class="video-table-scroll">
       <table class="video-management-table">
@@ -880,7 +1033,7 @@ function renderAdminVideoList() {
         </thead>
 
         <tbody>
-          ${videos.map((video) => {
+          ${list.map((video) => {
             const id = escapeHTML(video.id);
             const selectedTagIds = videoTagMap[String(video.id)] || [];
 
@@ -1798,6 +1951,19 @@ function setupEvents() {
     );
 
     if (video) openPlayer(video);
+  });
+
+  bindEvent("videoThumbnail", "change", handleThumbChange);
+  bindEvent("videoThumbRemoveBtn", "click", handleThumbRemove);
+
+  let adminSearchTimer = null;
+  bindEvent("adminVideoSearch", "input", (event) => {
+    clearTimeout(adminSearchTimer);
+    adminSearchTimer = setTimeout(() => {
+      adminVideoQuery = event.target.value || "";
+      renderAdminVideoPreview();
+      renderAdminVideoList();
+    }, 150);
   });
 
   bindEvent("adminVideoPreview", "click", (event) => {

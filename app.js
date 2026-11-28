@@ -335,7 +335,7 @@ function resetVideoForm() {
   if ($("saveVideoBtn")) $("saveVideoBtn").textContent = "動画を登録";
   if ($("cancelEditBtn")) $("cancelEditBtn").classList.add("hidden");
 
-  renderTagCheckboxes();
+  renderTagCheckboxes([]);
   showMessage("formMessage", "", false);
 }
 
@@ -343,11 +343,12 @@ function renderTagCheckboxes(selectedIds = null) {
   const container = $("videoTagCheckboxes");
   if (!container) return;
 
-  const selected = selectedIds || [];
+  // 指定がなければ、いま選んでいるタグをそのまま残す（タグの追加・更新で選択が消えないように）
+  const selected = selectedIds || getSelectedFormTagIds();
 
   if (!tags.length) {
     container.innerHTML =
-      '<span class="muted-text">登録されているタグはありません。</span>';
+      '<span class="muted-text">まだタグはありません。下の欄から作成できます。</span>';
     return;
   }
 
@@ -362,6 +363,66 @@ function renderTagCheckboxes(selectedIds = null) {
       <span>${escapeHTML(tag.name)}</span>
     </label>
   `).join("");
+}
+
+// 動画の登録画面で、新しいタグを作ってそのまま選択する
+async function createTagInline() {
+  if (!canManageVideos()) return;
+
+  const input = $("inlineTagName");
+  const name = input.value.trim();
+
+  if (!name) {
+    showMessage("inlineTagMessage", "タグ名を入力してください。");
+    return;
+  }
+
+  if (name.length > 40) {
+    showMessage("inlineTagMessage", "タグ名は40文字以内にしてください。");
+    return;
+  }
+
+  const selected = getSelectedFormTagIds();
+  const existing = tags.find((tag) => tag.name === name);
+
+  if (existing) {
+    renderTagCheckboxes([...selected, existing.id]);
+    input.value = "";
+    showMessage("inlineTagMessage", `「${name}」は登録済みのタグなので、選択しました。`, false);
+    return;
+  }
+
+  const button = $("inlineTagAddBtn");
+  button.disabled = true;
+
+  try {
+    const { data, error } = await supabase
+      .from("video_tags_master")
+      .insert({ name })
+      .select("id, name")
+      .single();
+
+    if (error) {
+      console.error("タグ作成エラー:", error);
+      showMessage(
+        "inlineTagMessage",
+        error.code === "23505" ? "同じ名前のタグがすでにあります。" : "タグを作成できませんでした。"
+      );
+      return;
+    }
+
+    if (!tags.some((tag) => Number(tag.id) === Number(data.id))) {
+      tags = [...tags, data].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    }
+
+    renderTagCheckboxes([...selected, data.id]);
+    renderTagManagementList();
+    input.value = "";
+    showMessage("inlineTagMessage", `タグ「${name}」を作成して選択しました。`, false);
+
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function getSelectedFormTagIds() {
@@ -972,69 +1033,43 @@ async function deleteTag(id) {
 // ログイン
 // --------------------------------------------------
 
-async function adminLogin(event) {
+// 管理者（メールアドレス）も発行ユーザー（ユーザーID）も同じ入力欄でログインする
+async function login(event) {
   event.preventDefault();
   showMessage("loginMessage", "");
 
-  const email = $("loginEmail").value.trim();
+  const loginId = $("loginId").value.trim();
   const password = $("loginPassword").value;
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  if (error) {
-    console.error("管理者ログインエラー:", error);
-    showMessage(
-      "loginMessage",
-      "ログインできませんでした。メールアドレスとパスワードを確認してください。"
-    );
-    return;
-  }
-
-  $("loginDialog").close();
-  $("adminLoginForm").reset();
-}
-
-async function memberLogin(event) {
-  event.preventDefault();
-  showMessage("memberLoginMessage", "");
-
-  const username = $("memberUsername").value.trim();
-  const password = $("memberPassword").value;
-
-  if (!username) {
-    showMessage("memberLoginMessage", "ログインIDを入力してください。");
+  if (!loginId) {
+    showMessage("loginMessage", "ログインIDを入力してください。");
     return;
   }
 
   try {
-    const internalEmail = await makeInternalEmail(username);
+    const internalEmail = await makeInternalEmail(loginId);
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginId);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: internalEmail,
-      password
-    });
+    // メールアドレスの形なら管理者として先に試し、だめならユーザーIDとして試す
+    const candidates = looksLikeEmail ? [loginId, internalEmail] : [internalEmail];
 
-    if (error) {
-      console.error("ユーザーログインエラー:", error);
-      showMessage(
-        "memberLoginMessage",
-        "ログインできませんでした。IDとパスワードを確認してください。"
-      );
-      return;
+    let lastError = null;
+    for (const email of candidates) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error) {
+        $("loginDialog").close();
+        $("loginForm").reset();
+        return;
+      }
+      lastError = error;
     }
 
-    $("loginDialog").close();
-    $("memberLoginForm").reset();
+    console.error("ログインエラー:", lastError);
+    showMessage("loginMessage", "ログインできませんでした。ログインIDとパスワードを確認してください。");
 
   } catch (error) {
     console.error(error);
-    showMessage(
-      "memberLoginMessage",
-      "ログイン処理に失敗しました。もう一度お試しください。"
-    );
+    showMessage("loginMessage", "ログイン処理に失敗しました。もう一度お試しください。");
   }
 }
 
@@ -1410,12 +1445,86 @@ async function loadScormDemoFiles() {
   list.innerHTML = rows.join("");
 }
 
+// ZIPの中身を取り出す（無圧縮・deflate圧縮のどちらにも対応）
+async function readZipEntries(file) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(buf.buffer);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("ZIPファイルとして読み込めませんでした。");
+
+  const count = view.getUint16(eocd + 10, true);
+  let p = view.getUint32(eocd + 16, true);
+  const entries = [];
+
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break;
+    const method = view.getUint16(p + 10, true);
+    const csize = view.getUint32(p + 20, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const local = view.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith("/")) continue;
+
+    const lNameLen = view.getUint16(local + 26, true);
+    const lExtraLen = view.getUint16(local + 28, true);
+    const start = local + 30 + lNameLen + lExtraLen;
+    const raw = buf.subarray(start, start + csize);
+    entries.push({ name, method, raw });
+  }
+  return entries;
+}
+
+async function inflateEntry(entry) {
+  if (entry.method === 0) return entry.raw;
+  if (entry.method === 8 && "DecompressionStream" in window) {
+    const stream = new Blob([entry.raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error(`「${entry.name}」の圧縮形式に対応していません。`);
+}
+
+// 選んだファイル（ZIPを含む）を、登録用の {name, blob} の一覧にする
+async function expandDemoFiles(files) {
+  const out = [];
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      out.push({ name: file.name, blob: file });
+      continue;
+    }
+    const entries = await readZipEntries(file);
+    for (const entry of entries) {
+      const base = entry.name.split("/").pop();
+      if (!demoPathFor(base)) continue;
+      const data = await inflateEntry(entry);
+      const type = base.toLowerCase().endsWith(".html") ? "text/html" : "video/mp4";
+      out.push({ name: base, blob: new Blob([data], { type }) });
+    }
+  }
+  return out;
+}
+
 async function uploadScormDemoFiles(event) {
   event.preventDefault();
   if (!isAdmin) return;
 
-  const files = Array.from($("scormDemoFiles").files || []);
-  if (!files.length) return;
+  let files;
+  try {
+    files = await expandDemoFiles(Array.from($("scormDemoFiles").files || []));
+  } catch (error) {
+    showMessage("scormDemoUploadMessage", error.message || "ファイルを読み込めませんでした。");
+    return;
+  }
+
+  if (!files.length) {
+    showMessage("scormDemoUploadMessage", "登録できるファイルが見つかりませんでした。");
+    return;
+  }
 
   const unknown = files.filter((f) => !demoPathFor(f.name));
   if (unknown.length) {
@@ -1436,7 +1545,7 @@ async function uploadScormDemoFiles(event) {
 
       const { error } = await supabase.storage
         .from(DEMO_BUCKET)
-        .upload(demoPathFor(file.name), file, {
+        .upload(demoPathFor(file.name), file.blob, {
           upsert: true,
           contentType: file.name.toLowerCase().endsWith(".html") ? "text/html" : "video/mp4"
         });
@@ -1593,17 +1702,25 @@ function setupEvents() {
 
   bindEvent("adminLoginBtn", "click", () => {
     showMessage("loginMessage", "", false);
-    showMessage("memberLoginMessage", "", false);
 
-    if ($("loginDialog")) $("loginDialog").showModal();
+    if ($("loginDialog")) {
+      $("loginDialog").showModal();
+      $("loginId")?.focus();
+    }
   });
 
   bindEvent("closeLoginBtn", "click", () => {
     if ($("loginDialog")?.open) $("loginDialog").close();
   });
 
-  bindEvent("adminLoginForm", "submit", adminLogin);
-  bindEvent("memberLoginForm", "submit", memberLogin);
+  bindEvent("loginForm", "submit", login);
+  bindEvent("inlineTagAddBtn", "click", createTagInline);
+  bindEvent("inlineTagName", "keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+      event.preventDefault();
+      createTagInline();
+    }
+  });
   bindEvent("adminLogoutBtn", "click", logout);
   bindEvent("createNamedUserForm", "submit", createNamedUser);
   bindEvent("closePlayerBtn", "click", closePlayer);

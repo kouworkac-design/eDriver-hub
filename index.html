@@ -116,6 +116,11 @@
             <div id="videoTagCheckboxes" class="tag-checkbox-list">
               <span class="muted-text">タグを読み込み中...</span>
             </div>
+            <div class="inline-tag-add">
+              <input type="text" id="inlineTagName" placeholder="新しいタグ名（例：保護具）" maxlength="40" aria-label="新しいタグ名">
+              <button type="button" id="inlineTagAddBtn" class="button button-outline">＋ タグを作成</button>
+            </div>
+            <p id="inlineTagMessage" class="form-message" aria-live="polite"></p>
           </div>
 
           <div class="form-actions">
@@ -242,14 +247,15 @@
       <section id="scormDemoManagement" class="management-section hidden">
         <h3>SCORM体験版のファイル</h3>
         <p class="muted-text">
-          体験版の本体（scorm-demo.html）と、2人作業の動画（ja.mp4 / en.mp4 / pt.mp4）を登録します。
+          教材の画面から書き出した「体験版セット（scorm_demo_upload_set.zip）」をそのまま選べば、中の4ファイルをまとめて登録します。
+          個別に登録する場合は、体験版の本体（scorm-demo.html）と、2人作業の動画（ja.mp4 / en.mp4 / pt.mp4）を選んでください。
           ファイルは非公開の保存場所に置かれ、閲覧を許可したユーザーと管理者だけが開けます。
           同じ名前のファイルを選ぶと上書きされます。
         </p>
         <form id="scormDemoUploadForm" class="user-form">
           <div class="form-group">
             <label for="scormDemoFiles">ファイルを選択（複数可）</label>
-            <input type="file" id="scormDemoFiles" accept=".html,video/mp4" multiple required>
+            <input type="file" id="scormDemoFiles" accept=".zip,.html,video/mp4" multiple required>
           </div>
           <button type="submit" id="scormDemoUploadBtn" class="button button-primary">アップロード</button>
         </form>
@@ -304,35 +310,19 @@
       </div>
 
       <section class="login-section">
-        <h3>管理者ログイン</h3>
-        <form id="adminLoginForm">
+        <form id="loginForm">
           <div class="form-group">
-            <label for="loginEmail">メールアドレス</label>
-            <input type="email" id="loginEmail" required>
+            <label for="loginId">ログインID</label>
+            <input type="text" id="loginId" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+            <p class="muted-text">発行されたユーザーIDを入力してください。管理者はメールアドレスでもログインできます。</p>
           </div>
           <div class="form-group">
             <label for="loginPassword">パスワード</label>
-            <input type="password" id="loginPassword" required>
+            <input type="password" id="loginPassword" autocomplete="current-password" required>
           </div>
           <button type="submit" class="button button-primary">ログイン</button>
         </form>
         <p id="loginMessage" class="form-message" aria-live="polite"></p>
-      </section>
-
-      <section class="login-section">
-        <h3>ユーザーログイン</h3>
-        <form id="memberLoginForm">
-          <div class="form-group">
-            <label for="memberUsername">ユーザーID</label>
-            <input type="text" id="memberUsername" required>
-          </div>
-          <div class="form-group">
-            <label for="memberPassword">パスワード</label>
-            <input type="password" id="memberPassword" required>
-          </div>
-          <button type="submit" class="button button-primary">ログイン</button>
-        </form>
-        <p id="memberLoginMessage" class="form-message" aria-live="polite"></p>
       </section>
     </div>
   </dialog>

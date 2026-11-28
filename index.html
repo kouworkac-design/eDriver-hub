@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="安全教育・KYT動画共有サイト">
   <title>安全教育動画ライブラリ</title>
-  <link rel="stylesheet" href="./style.css?v=20261128-5">
+  <link rel="stylesheet" href="./style.css?v=20261128-6">
 </head>
 <body>
 
@@ -54,8 +54,17 @@
         <span id="managementRoleLabel" class="role-label"></span>
       </div>
 
+      <!-- 管理画面のタブ -->
+      <div class="admin-tabs" role="tablist" aria-label="管理メニュー">
+        <button type="button" class="admin-tab" role="tab" data-admin-tab="form">動画の登録</button>
+        <button type="button" class="admin-tab" role="tab" data-admin-tab="videos">動画の管理</button>
+        <button type="button" class="admin-tab" role="tab" data-admin-tab="tags">タグ</button>
+        <button type="button" class="admin-tab" role="tab" data-admin-tab="users">ユーザー</button>
+        <button type="button" class="admin-tab" role="tab" data-admin-tab="scorm">SCORM教材</button>
+      </div>
+
       <!-- 動画登録・編集 -->
-      <section class="management-section">
+      <section class="management-section" data-admin-pane="form" role="tabpanel">
         <h3>動画の登録・編集</h3>
 
         <form id="videoForm" class="video-form">
@@ -151,7 +160,7 @@
       </section>
 
       <!-- 動画一覧の管理 -->
-      <section class="management-section">
+      <section class="management-section" data-admin-pane="videos" role="tabpanel">
         <div class="section-heading subsection-heading">
           <div>
             <h3>登録済み動画の管理</h3>
@@ -193,7 +202,7 @@
       </section>
 
       <!-- タグ管理 -->
-      <section class="management-section">
+      <section class="management-section" data-admin-pane="tags" role="tabpanel">
         <h3>タグ管理</h3>
         <p class="muted-text">動画に付けるタグを追加・編集・削除できます。</p>
 
@@ -220,7 +229,7 @@
       </section>
 
       <!-- 管理者専用：ユーザー管理 -->
-      <section id="namedUserManagement" class="management-section hidden">
+      <section id="namedUserManagement" class="management-section hidden" data-admin-pane="users" role="tabpanel">
         <h3>ユーザー管理</h3>
         <p class="muted-text">
           ユーザーの作成と、動画管理権限・SCORM体験版の閲覧許可の付与・解除ができます。
@@ -263,7 +272,7 @@
       </section>
 
       <!-- 管理者専用：SCORM体験版のファイル -->
-      <section id="scormDemoManagement" class="management-section hidden">
+      <section id="scormDemoManagement" class="management-section hidden" data-admin-pane="scorm" role="tabpanel">
         <h3>SCORM体験版のファイル</h3>
         <p class="muted-text">
           教材の画面から書き出した「体験版セット（scorm_demo_upload_set.zip）」をそのまま選べば、中の4ファイルをまとめて登録します。
@@ -376,6 +385,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="./app.js?v=20261128-5"></script>
+  <script type="module" src="./app.js?v=20261128-6"></script>
 </body>
 </html>

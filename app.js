@@ -493,7 +493,60 @@ function updateAdminView() {
     $("namedUserManagement").classList.toggle("hidden", !isAdmin);
   }
 
+  updateAdminTabs();
+
   renderVideos();
+}
+
+// --------------------------------------------------
+// 管理画面のタブ切り替え
+// --------------------------------------------------
+
+const ADMIN_TAB_KEY = "edriverAdminTab";
+let currentAdminTab = "form";
+try { currentAdminTab = localStorage.getItem(ADMIN_TAB_KEY) || "form"; } catch { /* 保存できない環境 */ }
+
+function updateAdminTabs() {
+  const panes = document.querySelectorAll("[data-admin-pane]");
+  const available = [];
+
+  // 権限で隠れている項目（class="hidden"）のタブは出さない
+  panes.forEach((pane) => {
+    const name = pane.dataset.adminPane;
+    const allowed = !pane.classList.contains("hidden");
+    if (allowed) available.push(name);
+    document
+      .querySelectorAll(`[data-admin-tab="${name}"]`)
+      .forEach((tab) => tab.classList.toggle("hidden", !allowed));
+  });
+
+  if (!available.includes(currentAdminTab)) currentAdminTab = available[0] || "form";
+
+  panes.forEach((pane) => {
+    pane.classList.toggle("tab-inactive", pane.dataset.adminPane !== currentAdminTab);
+  });
+
+  document.querySelectorAll("[data-admin-tab]").forEach((tab) => {
+    const active = tab.dataset.adminTab === currentAdminTab;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+    tab.tabIndex = active ? 0 : -1;
+
+    // 横にはみ出したタブ列でも、選んだタブが見える位置へ寄せる
+    if (active && tab.parentElement) {
+      const bar = tab.parentElement;
+      const left = tab.offsetLeft - bar.offsetLeft;
+      if (left < bar.scrollLeft || left + tab.offsetWidth > bar.scrollLeft + bar.clientWidth) {
+        bar.scrollLeft = Math.max(0, left - 16);
+      }
+    }
+  });
+}
+
+function switchAdminTab(name) {
+  currentAdminTab = name;
+  try { localStorage.setItem(ADMIN_TAB_KEY, name); } catch { /* 保存できない環境 */ }
+  updateAdminTabs();
 }
 
 function resetVideoForm() {
@@ -879,6 +932,7 @@ function editVideo(id) {
 
   $("saveVideoBtn").textContent = "変更を保存";
   $("cancelEditBtn").classList.remove("hidden");
+  switchAdminTab("form");
   $("adminPanel").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -1650,6 +1704,7 @@ async function changeScormDemoPermission(username, enabled) {
 function updateScormDemoView() {
   $("scormDemoSection")?.classList.toggle("hidden", !canViewScormDemo);
   $("scormDemoManagement")?.classList.toggle("hidden", !isAdmin);
+  updateAdminTabs();
 
   if (!canViewScormDemo && $("scormDemoDialog")?.open) {
     closeScormDemo();
@@ -1951,6 +2006,18 @@ function setupEvents() {
     );
 
     if (video) openPlayer(video);
+  });
+
+  document.querySelectorAll("[data-admin-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => switchAdminTab(tab.dataset.adminTab));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowRight", "ArrowLeft"].includes(event.key)) return;
+      const tabs = [...document.querySelectorAll("[data-admin-tab]:not(.hidden)")];
+      const index = tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1);
+      const next = tabs[(index + tabs.length) % tabs.length];
+      switchAdminTab(next.dataset.adminTab);
+      next.focus();
+    });
   });
 
   bindEvent("videoThumbnail", "change", handleThumbChange);

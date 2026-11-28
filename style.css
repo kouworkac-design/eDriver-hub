@@ -1220,3 +1220,84 @@ textarea {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* 動画登録：補足文・サムネイル差し込み */
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.thumb-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.thumb-preview {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #1c3550;
+}
+
+.thumb-field-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.thumb-field-controls input[type="file"] {
+  max-width: 100%;
+}
+
+/* 登録済み動画の管理：検索と枠内スクロール */
+.admin-video-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-video-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d9e2eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.admin-video-search span {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.admin-video-preview {
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+
+.admin-video-list .video-table-scroll {
+  max-height: 520px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 640px) {
+  .admin-video-preview {
+    max-height: 460px;
+  }
+
+  .admin-video-list .video-table-scroll {
+    max-height: 440px;
+  }
+}

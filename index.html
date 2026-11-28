@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="安全教育・KYT動画共有サイト">
   <title>安全教育動画ライブラリ</title>
-  <link rel="stylesheet" href="./style.css?v=20261128-3">
+  <link rel="stylesheet" href="./style.css?v=20261128-5">
 </head>
 <body>
 
@@ -62,13 +62,27 @@
           <input type="hidden" id="editVideoId">
 
           <div class="form-group">
-            <label for="videoUrl">YouTube動画URL</label>
+            <label for="videoUrl">埋め込み動画URL</label>
             <input
-              type="url"
+              type="text"
               id="videoUrl"
-              placeholder="https://www.youtube.com/watch?v=..."
+              placeholder="YouTube・VimeoのURL、またはVimeoの埋め込みコード"
+              autocomplete="off"
               required
             >
+            <p class="field-hint">YouTube（youtube.com / youtu.be）とVimeo（vimeo.com / player.vimeo.com）に対応しています。</p>
+          </div>
+
+          <div class="form-group">
+            <label for="videoThumbnail">サムネイル画像（任意）</label>
+            <div class="thumb-field">
+              <img id="videoThumbPreview" class="thumb-preview hidden" alt="サムネイルのプレビュー">
+              <div class="thumb-field-controls">
+                <input type="file" id="videoThumbnail" accept="image/jpeg,image/png,image/webp">
+                <button type="button" id="videoThumbRemoveBtn" class="button button-small button-outline hidden">画像を外す</button>
+              </div>
+            </div>
+            <p class="field-hint">入れた場合だけ、一覧にこの画像を表示します。JPG・PNG・WebP、2MBまで。入れない場合は動画サービスの画像を使います。</p>
           </div>
 
           <div class="form-group">
@@ -160,6 +174,11 @@
               リスト
             </button>
           </div>
+        </div>
+
+        <div class="admin-video-search">
+          <input type="search" id="adminVideoSearch" placeholder="タイトル・カテゴリ・タグ・説明で検索" aria-label="登録済み動画を検索">
+          <span id="adminVideoCount" class="muted-text"></span>
         </div>
 
         <div id="adminVideoPreview" class="admin-video-preview">
@@ -357,6 +376,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="./app.js?v=20261128-4"></script>
+  <script type="module" src="./app.js?v=20261128-5"></script>
 </body>
 </html>

@@ -149,3 +149,28 @@ create policy "SCORM demo: admins can update"
 create policy "SCORM demo: admins can delete"
   on storage.objects for delete to authenticated
   using (bucket_id = 'scorm-demo' and (select public.is_video_admin()));
+
+-- --------------------------------------------------
+-- Vimeo対応（2026-11-28 追加・適用済み）
+-- 既存のYouTube動画は video_provider = 'youtube' のまま変更なし
+-- --------------------------------------------------
+alter table public.videos
+  add column if not exists video_provider text not null default 'youtube',
+  add column if not exists vimeo_id text,
+  add column if not exists vimeo_hash text;
+
+alter table public.videos alter column youtube_id drop not null;
+
+alter table public.videos add constraint videos_provider_check check (
+  (
+    video_provider = 'youtube'
+    and youtube_id ~ '^[A-Za-z0-9_-]{11}$'
+    and vimeo_id is null
+    and vimeo_hash is null
+  ) or (
+    video_provider = 'vimeo'
+    and youtube_id is null
+    and vimeo_id ~ '^[0-9]{1,15}$'
+    and (vimeo_hash is null or vimeo_hash ~ '^[A-Za-z0-9]{1,64}$')
+  )
+);

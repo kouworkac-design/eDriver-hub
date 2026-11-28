@@ -182,7 +182,7 @@ function isVimeo(video) {
 function getEmbedUrl(video) {
   if (isVimeo(video)) {
     if (!VIMEO_ID_RE.test(video.vimeo_id || "")) return "";
-    const params = new URLSearchParams({ autoplay: "1", autopause: "0", dnt: "1" });
+    const params = new URLSearchParams({ autoplay: "1", autopause: "0", dnt: "1", title: "0", byline: "0", portrait: "0" });
     if (video.vimeo_hash && VIMEO_HASH_RE.test(video.vimeo_hash)) params.set("h", video.vimeo_hash);
     return `https://player.vimeo.com/video/${video.vimeo_id}?${params.toString()}`;
   }
